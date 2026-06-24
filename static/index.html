@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GradiQ — Smart Test Management</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- ───── Auth Screen ───── -->
+    <div id="auth-screen" class="screen active">
+        <div class="auth-container">
+            <div class="logo">
+                <h1>Gradi<span class="accent">Q</span></h1>
+                <p class="tagline">Smart Test Management for Educators</p>
+            </div>
+
+            <div class="tab-bar">
+                <button class="tab active" data-tab="login">Log In</button>
+                <button class="tab" data-tab="register">Sign Up</button>
+            </div>
+
+            <form id="login-form" class="auth-form active">
+                <div class="field">
+                    <label for="login-email">Email</label>
+                    <input type="email" id="login-email" required placeholder="you@school.edu">
+                </div>
+                <div class="field">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required placeholder="Enter password">
+                </div>
+                <button type="submit" class="btn primary full">Log In</button>
+            </form>
+
+            <form id="register-form" class="auth-form">
+                <div class="field">
+                    <label for="reg-name">Full Name</label>
+                    <input type="text" id="reg-name" required placeholder="Jane Smith">
+                </div>
+                <div class="field">
+                    <label for="reg-email">Email</label>
+                    <input type="email" id="reg-email" required placeholder="you@school.edu">
+                </div>
+                <div class="field">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" required minlength="6" placeholder="Min 6 characters">
+                </div>
+                <button type="submit" class="btn primary full">Create Account</button>
+            </form>
+
+            <p id="auth-error" class="error"></p>
+        </div>
+    </div>
+
+    <!-- ───── Dashboard Screen ───── -->
+    <div id="dashboard-screen" class="screen">
+        <nav class="topbar">
+            <h1 class="nav-logo">Gradi<span class="accent">Q</span></h1>
+            <div class="nav-right">
+                <span id="teacher-name"></span>
+                <button id="logout-btn" class="btn outline small">Log Out</button>
+            </div>
+        </nav>
+
+        <main class="container">
+            <!-- Test List View -->
+            <section id="test-list-view">
+                <div class="section-header">
+                    <h2>Your Tests</h2>
+                    <button id="new-test-btn" class="btn primary">+ New Test</button>
+                </div>
+                <div id="tests-grid" class="tests-grid">
+                    <p class="empty-state">No tests yet. Create your first test to get started!</p>
+                </div>
+            </section>
+
+            <!-- Create Test View -->
+            <section id="create-test-view" class="hidden">
+                <button class="btn text back-btn" onclick="showView('test-list-view')">&larr; Back to Tests</button>
+                <h2>Create New Test</h2>
+                <form id="create-test-form" class="card form-card">
+                    <div class="form-grid">
+                        <div class="field">
+                            <label for="test-name">Test Name</label>
+                            <input type="text" id="test-name" required placeholder="e.g. Midterm Exam">
+                        </div>
+                        <div class="field">
+                            <label for="test-subject">Subject</label>
+                            <input type="text" id="test-subject" required placeholder="e.g. Biology">
+                        </div>
+                        <div class="field">
+                            <label for="test-marks">Total Marks</label>
+                            <input type="number" id="test-marks" required min="1" placeholder="100">
+                        </div>
+                        <div class="field">
+                            <label for="test-questions">Number of Questions</label>
+                            <input type="number" id="test-questions" required min="1" max="200" placeholder="25">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn primary">Create Test</button>
+                </form>
+            </section>
+
+            <!-- Answer Key View -->
+            <section id="answer-key-view" class="hidden">
+                <button class="btn text back-btn" onclick="showView('test-list-view')">&larr; Back to Tests</button>
+                <div class="section-header">
+                    <div>
+                        <h2 id="ak-test-name"></h2>
+                        <p id="ak-test-meta" class="meta"></p>
+                    </div>
+                    <button id="save-key-btn" class="btn primary">Save Answer Key</button>
+                </div>
+                <div id="answer-key-grid" class="answer-key-grid"></div>
+            </section>
+
+            <!-- Test Detail View -->
+            <section id="test-detail-view" class="hidden">
+                <button class="btn text back-btn" onclick="showView('test-list-view')">&larr; Back to Tests</button>
+                <div class="card detail-card">
+                    <div class="detail-header">
+                        <div>
+                            <h2 id="detail-test-name"></h2>
+                            <p id="detail-test-meta" class="meta"></p>
+                        </div>
+                        <div class="detail-actions">
+                            <button id="grade-btn" class="btn primary small">Grade Students</button>
+                            <button id="edit-key-btn" class="btn outline small">Edit Answer Key</button>
+                            <button id="delete-test-btn" class="btn danger small">Delete</button>
+                        </div>
+                    </div>
+                    <h3>Answer Key</h3>
+                    <div id="detail-answer-key" class="answer-key-display"></div>
+
+                    <div class="results-section">
+                        <div class="results-header">
+                            <h3>Student Results</h3>
+                            <span id="results-count" class="results-count"></span>
+                        </div>
+                        <div id="results-table-wrap"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Grade Student View -->
+            <section id="grade-view" class="hidden">
+                <button class="btn text back-btn" id="grade-back-btn">&larr; Back to Test</button>
+                <h2>Grade Student</h2>
+                <p id="grade-test-info" class="meta" style="margin-bottom:1.25rem"></p>
+
+                <form id="grade-form" class="card form-card">
+                    <div class="field">
+                        <label for="student-name">Student Name</label>
+                        <input type="text" id="student-name" required placeholder="e.g. John Doe">
+                    </div>
+                    <div class="field">
+                        <label>Answer Sheet Photo</label>
+                        <div class="upload-area" id="upload-area">
+                            <input type="file" id="answer-sheet-input" accept="image/*" required>
+                            <div class="upload-placeholder" id="upload-placeholder">
+                                <span class="upload-icon">&#x1f4f7;</span>
+                                <span>Click or drag an image here</span>
+                                <span class="upload-hint">JPEG, PNG, WebP, or GIF &middot; Max 20 MB</span>
+                            </div>
+                            <img id="upload-preview" class="upload-preview hidden" alt="Preview">
+                        </div>
+                    </div>
+                    <button type="submit" id="grade-submit-btn" class="btn primary full">
+                        Upload &amp; Grade
+                    </button>
+                </form>
+
+                <!-- Grading result -->
+                <div id="grade-result" class="card grade-result-card hidden">
+                    <h3>Grading Result</h3>
+                    <div class="result-summary">
+                        <div class="result-stat">
+                            <span class="stat-label">Student</span>
+                            <span class="stat-value" id="res-student"></span>
+                        </div>
+                        <div class="result-stat">
+                            <span class="stat-label">Score</span>
+                            <span class="stat-value" id="res-score"></span>
+                        </div>
+                        <div class="result-stat">
+                            <span class="stat-label">Percentage</span>
+                            <span class="stat-value" id="res-pct"></span>
+                        </div>
+                        <div class="result-stat">
+                            <span class="stat-label">Grade</span>
+                            <span class="stat-value grade-badge" id="res-grade"></span>
+                        </div>
+                    </div>
+                    <h4>Answer Comparison</h4>
+                    <div class="comparison-grid" id="comparison-grid"></div>
+                    <div class="result-actions">
+                        <button class="btn primary" id="grade-another-btn">Grade Another Student</button>
+                        <button class="btn outline" id="back-to-test-btn">Back to Test</button>
+                        <button class="btn outline" id="res-pdf-btn">Download PDF</button>
+                        <button class="btn outline wa-share-btn" id="res-wa-btn">Share on WhatsApp</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
