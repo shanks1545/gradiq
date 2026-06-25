@@ -80,7 +80,7 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 test_id INTEGER NOT NULL,
                 question_number INTEGER NOT NULL,
-                correct_answer TEXT NOT NULL CHECK(correct_answer IN ('A','B','C','D')),
+                correct_answer TEXT NOT NULL,
                 UNIQUE(test_id, question_number),
                 FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE
             );
@@ -101,6 +101,25 @@ def init_db():
             conn.execute("ALTER TABLE student_results ADD COLUMN child_code TEXT")
         except sqlite3.OperationalError:
             pass
+        try:
+            conn.execute("ALTER TABLE tests ADD COLUMN question_types TEXT")
+        except sqlite3.OperationalError:
+            pass
+        row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='answer_keys'").fetchone()
+        if row and "CHECK" in row["sql"]:
+            conn.executescript("""
+                CREATE TABLE answer_keys_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    test_id INTEGER NOT NULL,
+                    question_number INTEGER NOT NULL,
+                    correct_answer TEXT NOT NULL,
+                    UNIQUE(test_id, question_number),
+                    FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE
+                );
+                INSERT INTO answer_keys_new SELECT * FROM answer_keys;
+                DROP TABLE answer_keys;
+                ALTER TABLE answer_keys_new RENAME TO answer_keys;
+            """)
 
 
 init_db()
@@ -132,6 +151,7 @@ class AnswerKeyEntry(BaseModel):
 
 class AnswerKeySubmit(BaseModel):
     answers: list[AnswerKeyEntry]
+    question_types: list[str] | None = None
 
 
 # ── Auth helpers ─────────────────────────────────────────────────────
@@ -256,10 +276,19 @@ def save_answer_key(test_id: int, body: AnswerKeySubmit, teacher: dict = Depends
                 status_code=400,
                 detail=f"Expected {test['num_questions']} answers, got {len(body.answers)}",
             )
-        for a in body.answers:
-            if a.correct_answer not in ("A", "B", "C", "D"):
-                raise HTTPException(status_code=400, detail=f"Invalid answer for Q{a.question_number}")
+        qtypes = body.question_types or ["mcq"] * test["num_questions"]
+        if len(qtypes) != test["num_questions"]:
+            raise HTTPException(status_code=400, detail="Question types count must match number of questions")
+        for i, a in enumerate(body.answers):
+            qt = qtypes[i]
+            if qt == "mcq" and a.correct_answer not in ("A", "B", "C", "D"):
+                raise HTTPException(status_code=400, detail=f"Invalid MCQ answer for Q{a.question_number}")
+            elif qt == "tf" and a.correct_answer not in ("True", "False"):
+                raise HTTPException(status_code=400, detail=f"Invalid True/False answer for Q{a.question_number}")
+            elif qt == "fill" and not a.correct_answer.strip():
+                raise HTTPException(status_code=400, detail=f"Fill-in answer cannot be empty for Q{a.question_number}")
 
+        conn.execute("UPDATE tests SET question_types = ? WHERE id = ?", (json.dumps(qtypes), test_id))
         conn.execute("DELETE FROM answer_keys WHERE test_id = ?", (test_id,))
         conn.executemany(
             "INSERT INTO answer_keys (test_id, question_number, correct_answer) VALUES (?, ?, ?)",
@@ -284,14 +313,48 @@ def compute_grade(percentage: float) -> str:
     return "F"
 
 
-def _score_answers(student_answers, answer_key_rows, test):
-    answer_key = {r["question_number"]: r["correct_answer"] for r in answer_key_rows}
+def _normalize_tf(answer):
+    a = answer.strip().lower()
+    if a in ("true", "t", "yes", "y"):
+        return "true"
+    if a in ("false", "f", "no", "n"):
+        return "false"
+    return a
+
+
+def _check_answer(student_ans, correct_ans, qtype):
+    if student_ans == "?":
+        return False
+    if qtype == "fill":
+        return correct_ans.strip().lower() in student_ans.strip().lower()
+    if qtype == "tf":
+        return _normalize_tf(student_ans) == _normalize_tf(correct_ans)
+    return student_ans == correct_ans
+
+
+def _build_student_map(student_answers, question_types):
     student_map = {}
     for a in student_answers:
         qn = a.get("question_number")
-        sa = str(a.get("selected_answer", "")).upper().strip()
-        if qn is not None and sa in ("A", "B", "C", "D"):
-            student_map[int(qn)] = sa
+        sa = str(a.get("selected_answer", "")).strip()
+        if qn is None or not sa:
+            continue
+        qi = int(qn)
+        qt = question_types[qi - 1] if qi <= len(question_types) else "mcq"
+        if qt == "mcq":
+            sa = sa.upper()
+            if sa in ("A", "B", "C", "D"):
+                student_map[qi] = sa
+        else:
+            student_map[qi] = sa
+    return student_map
+
+
+def _score_answers(student_answers, answer_key_rows, test, question_types=None):
+    if question_types is None:
+        question_types = ["mcq"] * test["num_questions"]
+    answer_key = {r["question_number"]: r["correct_answer"] for r in answer_key_rows}
+    student_map = _build_student_map(student_answers, question_types)
 
     marks_per_question = test["total_marks"] / test["num_questions"]
     correct_count = 0
@@ -299,7 +362,8 @@ def _score_answers(student_answers, answer_key_rows, test):
     for q in range(1, test["num_questions"] + 1):
         student_ans = student_map.get(q, "?")
         correct_ans = answer_key.get(q, "?")
-        is_correct = student_ans == correct_ans
+        qt = question_types[q - 1] if q <= len(question_types) else "mcq"
+        is_correct = _check_answer(student_ans, correct_ans, qt)
         if is_correct:
             correct_count += 1
         comparison.append({
@@ -307,6 +371,7 @@ def _score_answers(student_answers, answer_key_rows, test):
             "student_answer": student_ans,
             "correct_answer": correct_ans,
             "is_correct": is_correct,
+            "question_type": qt,
         })
 
     score = round(correct_count * marks_per_question, 2)
@@ -327,19 +392,48 @@ def _generate_child_code(conn):
     return f"GRD{num:03d}"
 
 
-def extract_answers_with_claude(image_bytes: bytes, media_type: str, num_questions: int) -> list[dict]:
+def extract_answers_with_claude(image_bytes: bytes, media_type: str, num_questions: int, question_types: list[str] | None = None) -> list[dict]:
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+    qtypes = question_types or ["mcq"] * num_questions
 
-    prompt = (
-        f"This is a photo of a student's MCQ answer sheet with {num_questions} questions. "
-        f"Each question has options A, B, C, or D. The student has marked one option per question "
-        f"(by circling, shading, ticking, or otherwise indicating their choice).\n\n"
-        f"Extract the student's selected answer for each question from Q1 to Q{num_questions}.\n\n"
-        f"Return ONLY a JSON array with exactly {num_questions} objects, each with "
-        f'"question_number" (integer) and "selected_answer" (one of "A", "B", "C", "D"). '
-        f"If a question appears unanswered or unclear, use your best judgment. "
-        f"Return ONLY the JSON array, no other text."
-    )
+    has_mixed = len(set(qtypes)) > 1 or qtypes[0] != "mcq"
+
+    if not has_mixed:
+        prompt = (
+            f"This is a photo of a student's MCQ answer sheet with {num_questions} questions. "
+            f"Each question has options A, B, C, or D. The student has marked one option per question "
+            f"(by circling, shading, ticking, or otherwise indicating their choice).\n\n"
+            f"Extract the student's selected answer for each question from Q1 to Q{num_questions}.\n\n"
+            f"Return ONLY a JSON array with exactly {num_questions} objects, each with "
+            f'"question_number" (integer) and "selected_answer" (one of "A", "B", "C", "D"). '
+            f"If a question appears unanswered or unclear, use your best judgment. "
+            f"Return ONLY the JSON array, no other text."
+        )
+    else:
+        type_lines = []
+        for i, qt in enumerate(qtypes, 1):
+            if qt == "mcq":
+                type_lines.append(f"Q{i}: MCQ (A/B/C/D)")
+            elif qt == "fill":
+                type_lines.append(f"Q{i}: Fill in the Blank")
+            elif qt == "tf":
+                type_lines.append(f"Q{i}: True/False")
+        type_list = "\n".join(type_lines)
+
+        prompt = (
+            f"This is a photo of a student's answer sheet with {num_questions} questions.\n\n"
+            f"The questions have the following types:\n{type_list}\n\n"
+            f"For MCQ questions: extract the circled, shaded, ticked, or otherwise indicated letter (A, B, C, or D).\n"
+            f"For Fill in the Blank questions: extract exactly what the student wrote in the blank space.\n"
+            f"For True/False questions: determine if the student indicated True or False "
+            f"(may be written as True/False, T/F, Yes/No, or by ticking/circling one option).\n\n"
+            f"Return ONLY a JSON array with exactly {num_questions} objects, each with "
+            f'"question_number" (integer) and "selected_answer" '
+            f'(for MCQ: one of "A","B","C","D"; for Fill in the Blank: the text written; '
+            f'for True/False: "True" or "False").\n'
+            f"If a question appears unanswered or unclear, use your best judgment. "
+            f"Return ONLY the JSON array, no other text."
+        )
 
     response = claude_client.messages.create(
         model="claude-sonnet-4-6",
@@ -406,20 +500,17 @@ async def grade_student(
     if len(image_bytes) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image must be under 20 MB.")
 
+    question_types = json.loads(test["question_types"]) if test["question_types"] else ["mcq"] * test["num_questions"]
+
     try:
-        student_answers = extract_answers_with_claude(image_bytes, media_type, test["num_questions"])
+        student_answers = extract_answers_with_claude(image_bytes, media_type, test["num_questions"], question_types)
     except anthropic.APIError as e:
         raise HTTPException(status_code=502, detail=f"Claude API error: {e.message}")
     except (ValueError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=502, detail=f"Could not parse Claude response: {str(e)}")
 
     answer_key = {r["question_number"]: r["correct_answer"] for r in answer_key_rows}
-    student_map = {}
-    for a in student_answers:
-        qn = a.get("question_number")
-        sa = str(a.get("selected_answer", "")).upper().strip()
-        if qn is not None and sa in ("A", "B", "C", "D"):
-            student_map[int(qn)] = sa
+    student_map = _build_student_map(student_answers, question_types)
 
     print(f"\n{'='*60}")
     print(f"GRADING DEBUG — Student: {student_name}, Test: {test['name']} (id={test_id})")
@@ -440,16 +531,18 @@ async def grade_student(
     for q in range(1, test["num_questions"] + 1):
         student_ans = student_map.get(q, "?")
         correct_ans = answer_key.get(q, "?")
-        is_correct = student_ans == correct_ans
+        qt = question_types[q - 1] if q <= len(question_types) else "mcq"
+        is_correct = _check_answer(student_ans, correct_ans, qt)
         if is_correct:
             correct_count += 1
         status = "✓" if is_correct else "✗"
-        print(f"  Q{q}: student={student_ans} key={correct_ans} {status}")
+        print(f"  Q{q} [{qt}]: student={student_ans} key={correct_ans} {status}")
         comparison.append({
             "question_number": q,
             "student_answer": student_ans,
             "correct_answer": correct_ans,
             "is_correct": is_correct,
+            "question_type": qt,
         })
 
     score = round(correct_count * marks_per_question, 2)
@@ -508,15 +601,17 @@ async def grade_batch_item(
     if len(image_bytes) > 20 * 1024 * 1024:
         raise HTTPException(status_code=400, detail="Image must be under 20 MB.")
 
+    question_types = json.loads(test["question_types"]) if test["question_types"] else ["mcq"] * test["num_questions"]
+
     try:
-        student_answers = extract_answers_with_claude(image_bytes, media_type, test["num_questions"])
+        student_answers = extract_answers_with_claude(image_bytes, media_type, test["num_questions"], question_types)
     except anthropic.APIError as e:
         raise HTTPException(status_code=502, detail=f"Claude API error: {e.message}")
     except (ValueError, json.JSONDecodeError) as e:
         raise HTTPException(status_code=502, detail=f"Could not parse Claude response: {str(e)}")
 
     comparison, score, percentage, grade, correct_count = _score_answers(
-        student_answers, answer_key_rows, test
+        student_answers, answer_key_rows, test, question_types
     )
 
     with db_session() as conn:

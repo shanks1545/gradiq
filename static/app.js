@@ -169,22 +169,25 @@ async function openAnswerKeyEditor(testId) {
         const grid = document.getElementById('answer-key-grid');
         const existingAnswers = {};
         (test.answer_key || []).forEach(a => { existingAnswers[a.question_number] = a.correct_answer; });
+        const qTypes = test.question_types ? (typeof test.question_types === 'string' ? JSON.parse(test.question_types) : test.question_types) : Array(test.num_questions).fill('mcq');
 
         grid.innerHTML = '';
         for (let i = 1; i <= test.num_questions; i++) {
-            const selected = existingAnswers[i] || '';
+            const type = qTypes[i - 1] || 'mcq';
             grid.innerHTML += `
                 <div class="ak-item">
                     <span class="q-num">Q${i}</span>
-                    <select data-q="${i}">
-                        <option value="" ${!selected ? 'selected' : ''}>—</option>
-                        <option value="A" ${selected === 'A' ? 'selected' : ''}>A</option>
-                        <option value="B" ${selected === 'B' ? 'selected' : ''}>B</option>
-                        <option value="C" ${selected === 'C' ? 'selected' : ''}>C</option>
-                        <option value="D" ${selected === 'D' ? 'selected' : ''}>D</option>
+                    <select class="type-select" data-q="${i}" onchange="updateAkAnswer(${i})">
+                        <option value="mcq" ${type === 'mcq' ? 'selected' : ''}>MCQ</option>
+                        <option value="fill" ${type === 'fill' ? 'selected' : ''}>Fill in the Blank</option>
+                        <option value="tf" ${type === 'tf' ? 'selected' : ''}>True / False</option>
                     </select>
+                    <div class="ak-answer" id="ak-answer-${i}"></div>
                 </div>
             `;
+        }
+        for (let i = 1; i <= test.num_questions; i++) {
+            renderAkAnswer(i, qTypes[i - 1] || 'mcq', existingAnswers[i] || '');
         }
         showView('answer-key-view');
     } catch (err) {
@@ -192,14 +195,65 @@ async function openAnswerKeyEditor(testId) {
     }
 }
 
+function updateAkAnswer(q) {
+    const type = document.querySelector(`.type-select[data-q="${q}"]`).value;
+    renderAkAnswer(q, type, '');
+}
+
+function renderAkAnswer(q, type, value) {
+    const container = document.getElementById(`ak-answer-${q}`);
+    if (type === 'mcq') {
+        container.innerHTML = `
+            <select class="ak-val" data-q="${q}">
+                <option value="" ${!value ? 'selected' : ''}>—</option>
+                <option value="A" ${value === 'A' ? 'selected' : ''}>A</option>
+                <option value="B" ${value === 'B' ? 'selected' : ''}>B</option>
+                <option value="C" ${value === 'C' ? 'selected' : ''}>C</option>
+                <option value="D" ${value === 'D' ? 'selected' : ''}>D</option>
+            </select>`;
+    } else if (type === 'fill') {
+        container.innerHTML = `<input type="text" class="ak-val ak-fill-input" data-q="${q}" value="${esc(value)}" placeholder="Correct answer">`;
+    } else if (type === 'tf') {
+        container.innerHTML = `
+            <div class="tf-buttons" data-q="${q}">
+                <button type="button" class="tf-btn ${value === 'True' ? 'active' : ''}" onclick="selectTf(${q},'True')">True</button>
+                <button type="button" class="tf-btn ${value === 'False' ? 'active' : ''}" onclick="selectTf(${q},'False')">False</button>
+            </div>`;
+    }
+}
+
+function selectTf(q, val) {
+    const container = document.querySelector(`.tf-buttons[data-q="${q}"]`);
+    container.querySelectorAll('.tf-btn').forEach(btn => btn.classList.toggle('active', btn.textContent === val));
+    container.dataset.tfValue = val;
+}
+
 document.getElementById('save-key-btn').addEventListener('click', async () => {
-    const selects = document.querySelectorAll('#answer-key-grid select');
     const answers = [];
+    const question_types = [];
     let allFilled = true;
-    selects.forEach(sel => {
-        if (!sel.value) allFilled = false;
-        answers.push({ question_number: parseInt(sel.dataset.q), correct_answer: sel.value });
+
+    const typeSelects = document.querySelectorAll('.type-select');
+    typeSelects.forEach(sel => {
+        const q = parseInt(sel.dataset.q);
+        const type = sel.value;
+        question_types.push(type);
+
+        let answer = '';
+        if (type === 'mcq') {
+            const valSel = document.querySelector(`#ak-answer-${q} select.ak-val`);
+            answer = valSel ? valSel.value : '';
+        } else if (type === 'fill') {
+            const input = document.querySelector(`#ak-answer-${q} input.ak-val`);
+            answer = input ? input.value.trim() : '';
+        } else if (type === 'tf') {
+            const tfContainer = document.querySelector(`#ak-answer-${q} .tf-buttons`);
+            answer = tfContainer ? (tfContainer.dataset.tfValue || '') : '';
+        }
+        if (!answer) allFilled = false;
+        answers.push({ question_number: q, correct_answer: answer });
     });
+
     if (!allFilled) {
         toast('Please fill in all answers before saving.', true);
         return;
@@ -207,7 +261,7 @@ document.getElementById('save-key-btn').addEventListener('click', async () => {
     try {
         await api(`/api/tests/${currentTestId}/answer-key`, {
             method: 'POST',
-            body: { answers }
+            body: { answers, question_types }
         });
         toast('Answer key saved!');
         viewTest(currentTestId);
@@ -231,9 +285,11 @@ async function viewTest(testId) {
 
         const akDisplay = document.getElementById('detail-answer-key');
         if (test.answer_key && test.answer_key.length > 0) {
-            akDisplay.innerHTML = test.answer_key.map(a =>
-                `<div class="ak-pill"><span class="q">Q${a.question_number}</span><span class="a">${a.correct_answer}</span></div>`
-            ).join('');
+            const qTypes = test.question_types ? (typeof test.question_types === 'string' ? JSON.parse(test.question_types) : test.question_types) : [];
+            akDisplay.innerHTML = test.answer_key.map((a, idx) => {
+                const qt = qTypes[idx] || 'mcq';
+                return `<div class="ak-pill ak-pill-${qt}"><span class="q">Q${a.question_number}</span><span class="a">${esc(a.correct_answer)}</span></div>`;
+            }).join('');
         } else {
             akDisplay.innerHTML = '<p class="no-key-msg">No answer key set yet.</p>';
         }
@@ -550,7 +606,9 @@ function showGradeResult(data) {
     grid.innerHTML = data.comparison.map(c => {
         const cls = c.is_correct ? 'correct' : 'wrong';
         const label = c.is_correct ? c.student_answer : `${c.student_answer} (${c.correct_answer})`;
-        return `<div class="cmp-item ${cls}"><span class="cmp-q">Q${c.question_number}</span><span class="cmp-a">${esc(label)}</span></div>`;
+        const qt = c.question_type || 'mcq';
+        const typeLabel = { mcq: 'M', fill: 'F', tf: 'T/F' }[qt] || 'M';
+        return `<div class="cmp-item ${cls}"><span class="cmp-q">Q${c.question_number}</span><span class="cmp-type">${typeLabel}</span><span class="cmp-a">${esc(label)}</span></div>`;
     }).join('');
 
     document.getElementById('res-pdf-btn').onclick = () => downloadPdf(data.result_id);
