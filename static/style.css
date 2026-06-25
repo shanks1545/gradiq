@@ -635,6 +635,105 @@ a { color: var(--teal-400); }
     opacity: .7;
 }
 
+/* ── Batch Grading ──────────────────────────────────────────── */
+.batch-file-list { margin: 1rem 0; }
+.batch-file-count { color: var(--gray-400); font-size: .85rem; margin-bottom: .75rem; }
+.batch-file-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: .6rem 0;
+    border-bottom: 1px solid var(--navy-600);
+}
+.batch-thumb {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--navy-600);
+    flex-shrink: 0;
+}
+.batch-name-input {
+    flex: 1;
+    padding: .55rem .75rem;
+    border: 1.5px solid var(--navy-600);
+    border-radius: var(--radius-sm);
+    background: var(--navy-800);
+    color: var(--white);
+    font-size: .9rem;
+}
+.batch-name-input:focus { outline: none; border-color: var(--teal-500); }
+.batch-name-input::placeholder { color: var(--gray-500); }
+.batch-camera-btn { margin-top: .75rem; gap: .5rem; }
+
+/* ── Progress Bar ──────────────────────────────────────────── */
+.batch-progress { margin: 1.25rem 0; }
+.progress-bar-wrap {
+    width: 100%;
+    height: 8px;
+    background: var(--navy-600);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: .75rem;
+}
+.progress-bar {
+    height: 100%;
+    background: var(--teal-500);
+    border-radius: 4px;
+    width: 0%;
+    transition: width .3s;
+}
+.batch-progress-text { color: var(--gray-300); font-size: .9rem; text-align: center; }
+
+/* ── Batch Summary ─────────────────────────────────────────── */
+.batch-summary {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: .75rem;
+    margin: 1rem 0;
+}
+.batch-success { color: var(--teal-400) !important; }
+.batch-failed { color: var(--red-400) !important; }
+.batch-failures {
+    margin-top: 1rem;
+    padding: .75rem;
+    background: rgba(239,68,68,.08);
+    border: 1px solid rgba(239,68,68,.25);
+    border-radius: var(--radius-sm);
+}
+.batch-failures h4 { color: var(--red-400); font-size: .85rem; margin-bottom: .5rem; }
+.batch-failure-item { color: var(--gray-300); font-size: .8rem; padding: .25rem 0; }
+
+/* ── Child Code ────────────────────────────────────────────── */
+.child-code {
+    font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--teal-300);
+    letter-spacing: .5px;
+}
+.no-code { color: var(--gray-500); }
+.code-cell { white-space: nowrap; }
+.copy-code-btn {
+    background: none;
+    border: 1px solid rgba(20,184,166,.35);
+    color: var(--teal-500);
+    cursor: pointer;
+    font-size: .6rem;
+    font-weight: 600;
+    padding: .1rem .35rem;
+    border-radius: 3px;
+    margin-left: .35rem;
+    transition: all .15s;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+}
+.copy-code-btn:hover {
+    background: rgba(20,184,166,.12);
+    border-color: var(--teal-500);
+    color: var(--teal-300);
+}
+
 .hidden { display: none !important; }
 
 /* ── Toast ────────────────────────────────────────────────────── */
@@ -718,7 +817,12 @@ a { color: var(--teal-400); }
     .summary-label { font-size: .6rem; }
 
     /* Results table — horizontal scroll */
-    .results-table { min-width: 580px; }
+    .results-table { min-width: 680px; }
+
+    /* Batch grading */
+    .batch-file-item { gap: .5rem; }
+    .batch-thumb { width: 40px; height: 40px; }
+    .batch-name-input { font-size: .85rem; padding: .45rem .6rem; }
 
     /* Upload area */
     .upload-area { padding: 1.25rem; }

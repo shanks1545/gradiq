@@ -241,7 +241,9 @@ async function viewTest(testId) {
         renderResultsTable(results);
 
         document.getElementById('grade-btn').onclick = () => openGradeView(testId, test);
+        document.getElementById('batch-grade-btn').onclick = () => openBatchGradeView(testId, test);
         document.getElementById('edit-key-btn').onclick = () => openAnswerKeyEditor(testId);
+        document.getElementById('clear-results-btn').onclick = () => clearAllResults(testId);
         document.getElementById('delete-test-btn').onclick = () => deleteTest(testId);
 
         showView('test-detail-view');
@@ -292,6 +294,7 @@ function renderResultsTable(results) {
                 <tr>
                     <th>#</th>
                     <th>Student Name</th>
+                    <th>Child Code</th>
                     <th>Score</th>
                     <th>Percentage</th>
                     <th>Grade</th>
@@ -303,6 +306,7 @@ function renderResultsTable(results) {
                     <tr>
                         <td class="rank-cell">${i + 1}</td>
                         <td>${esc(r.student_name)}</td>
+                        <td class="code-cell">${r.child_code ? `<span class="child-code">${esc(r.child_code)}</span><button class="copy-code-btn" onclick="copyCode('${r.child_code}')" title="Copy code">copy</button>` : '<span class="no-code">&mdash;</span>'}</td>
                         <td class="score-cell" id="score-${r.id}">
                             <span class="score-display">${r.score} / ${r.total_marks}</span>
                             <button class="edit-score-btn" onclick="editScore(${r.id})" title="Edit score">&#9998;</button>
@@ -429,6 +433,17 @@ async function deleteResult(resultId) {
     }
 }
 
+async function clearAllResults(testId) {
+    if (!confirm('Are you sure you want to delete all student results for this test?')) return;
+    try {
+        await api(`/api/tests/${testId}/results`, { method: 'DELETE' });
+        toast('All results cleared.');
+        viewTest(testId);
+    } catch (err) {
+        toast(err.message, true);
+    }
+}
+
 async function deleteTest(testId) {
     if (!confirm('Are you sure you want to delete this test?')) return;
     try {
@@ -545,12 +560,185 @@ function showGradeResult(data) {
     document.getElementById('grade-result').classList.remove('hidden');
 }
 
+// ── Batch Grading ────────────────────────────────────────────
+
+let batchFiles = [];
+
+function openBatchGradeView(testId, test) {
+    currentTestId = testId;
+    document.getElementById('batch-test-info').textContent =
+        `${test.name} · ${test.subject} · ${test.num_questions} questions · ${test.total_marks} marks`;
+
+    document.getElementById('batch-upload-step').classList.remove('hidden');
+    document.getElementById('batch-progress-step').classList.add('hidden');
+    document.getElementById('batch-complete-step').classList.add('hidden');
+    document.getElementById('batch-file-list').classList.add('hidden');
+    document.getElementById('batch-file-list').innerHTML = '';
+    document.getElementById('batch-grade-all-btn').classList.add('hidden');
+    document.getElementById('batch-file-input').value = '';
+    document.getElementById('batch-camera-input').value = '';
+    document.getElementById('batch-upload-placeholder').classList.remove('hidden');
+    batchFiles = [];
+
+    document.getElementById('batch-back-btn').onclick = () => viewTest(testId);
+    document.getElementById('batch-view-results-btn').onclick = () => viewTest(testId);
+
+    showView('batch-grade-view');
+}
+
+document.getElementById('batch-file-input').addEventListener('change', function () {
+    const newFiles = Array.from(this.files);
+    if (newFiles.length > 0) {
+        batchFiles = batchFiles.concat(newFiles);
+        renderBatchFileList();
+    }
+});
+
+document.getElementById('batch-camera-input').addEventListener('change', function () {
+    const file = this.files[0];
+    if (file) {
+        batchFiles.push(file);
+        this.value = '';
+        renderBatchFileList();
+    }
+});
+
+document.getElementById('batch-camera-btn').addEventListener('click', function () {
+    document.getElementById('batch-camera-input').click();
+});
+
+const batchUploadArea = document.getElementById('batch-upload-area');
+['dragenter', 'dragover'].forEach(e => batchUploadArea.addEventListener(e, (ev) => {
+    ev.preventDefault();
+    batchUploadArea.classList.add('dragover');
+}));
+['dragleave', 'drop'].forEach(e => batchUploadArea.addEventListener(e, (ev) => {
+    ev.preventDefault();
+    batchUploadArea.classList.remove('dragover');
+}));
+batchUploadArea.addEventListener('drop', (ev) => {
+    const files = Array.from(ev.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+    if (files.length > 0) {
+        batchFiles = batchFiles.concat(files);
+        renderBatchFileList();
+    }
+});
+
+function renderBatchFileList() {
+    const list = document.getElementById('batch-file-list');
+    const placeholder = document.getElementById('batch-upload-placeholder');
+
+    const savedNames = [];
+    for (let i = 0; ; i++) {
+        const input = document.getElementById(`batch-name-${i}`);
+        if (!input) break;
+        savedNames[i] = input.value;
+    }
+
+    if (batchFiles.length === 0) {
+        list.classList.add('hidden');
+        document.getElementById('batch-grade-all-btn').classList.add('hidden');
+        placeholder.classList.remove('hidden');
+        return;
+    }
+
+    placeholder.classList.add('hidden');
+    list.classList.remove('hidden');
+    document.getElementById('batch-grade-all-btn').classList.remove('hidden');
+
+    list.innerHTML = `<p class="batch-file-count">${batchFiles.length} photo${batchFiles.length > 1 ? 's' : ''} selected</p>` +
+        batchFiles.map((file, i) => {
+            const url = URL.createObjectURL(file);
+            return `
+                <div class="batch-file-item">
+                    <img src="${url}" class="batch-thumb" alt="Photo ${i + 1}">
+                    <input type="text" class="batch-name-input" id="batch-name-${i}"
+                           placeholder="Student name">
+                </div>
+            `;
+        }).join('');
+
+    savedNames.forEach((name, i) => {
+        const input = document.getElementById(`batch-name-${i}`);
+        if (input && name) input.value = name;
+    });
+}
+
+document.getElementById('batch-grade-all-btn').addEventListener('click', async () => {
+    const names = [];
+    for (let i = 0; i < batchFiles.length; i++) {
+        const name = document.getElementById(`batch-name-${i}`).value.trim();
+        if (!name) {
+            toast('Please enter a name for every student.', true);
+            document.getElementById(`batch-name-${i}`).focus();
+            return;
+        }
+        names.push(name);
+    }
+
+    document.getElementById('batch-upload-step').classList.add('hidden');
+    document.getElementById('batch-progress-step').classList.remove('hidden');
+
+    const progressBar = document.getElementById('batch-progress-bar');
+    const progressText = document.getElementById('batch-progress-text');
+
+    let graded = 0;
+    let failed = 0;
+    const failures = [];
+
+    for (let i = 0; i < batchFiles.length; i++) {
+        const studentName = names[i];
+        progressText.textContent = `Grading ${studentName}... ${i + 1} of ${batchFiles.length}`;
+        progressBar.style.width = `${(i / batchFiles.length) * 100}%`;
+
+        try {
+            const formData = new FormData();
+            formData.append('student_name', studentName);
+            formData.append('answer_sheet', batchFiles[i]);
+
+            const res = await fetch(`/api/tests/${currentTestId}/grade-batch-item`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${token}` },
+                body: formData,
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.detail || 'Grading failed');
+            graded++;
+        } catch (err) {
+            failed++;
+            failures.push({ name: studentName, error: err.message });
+        }
+
+        progressBar.style.width = `${((i + 1) / batchFiles.length) * 100}%`;
+    }
+
+    document.getElementById('batch-progress-step').classList.add('hidden');
+    document.getElementById('batch-complete-step').classList.remove('hidden');
+
+    document.getElementById('batch-total').textContent = batchFiles.length;
+    document.getElementById('batch-success').textContent = graded;
+    document.getElementById('batch-failed').textContent = failed;
+
+    const failuresEl = document.getElementById('batch-failures');
+    if (failures.length > 0) {
+        failuresEl.classList.remove('hidden');
+        failuresEl.innerHTML = '<h4>Failed:</h4>' +
+            failures.map(f => `<p class="batch-failure-item">${esc(f.name)}: ${esc(f.error)}</p>`).join('');
+    } else {
+        failuresEl.classList.add('hidden');
+    }
+});
+
 // ── Utilities ─────────────────────────────────────────────────
 
 function esc(str) {
     const d = document.createElement('div');
     d.textContent = str;
     return d.innerHTML;
+}
+
+function copyCode(code) {
+    navigator.clipboard.writeText(code).then(() => toast('Code copied!'));
 }
 
 // ── Init ──────────────────────────────────────────────────────

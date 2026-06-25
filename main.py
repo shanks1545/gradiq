@@ -97,6 +97,10 @@ def init_db():
                 FOREIGN KEY (test_id) REFERENCES tests(id) ON DELETE CASCADE
             );
         """)
+        try:
+            conn.execute("ALTER TABLE student_results ADD COLUMN child_code TEXT")
+        except sqlite3.OperationalError:
+            pass
 
 
 init_db()
@@ -280,6 +284,49 @@ def compute_grade(percentage: float) -> str:
     return "F"
 
 
+def _score_answers(student_answers, answer_key_rows, test):
+    answer_key = {r["question_number"]: r["correct_answer"] for r in answer_key_rows}
+    student_map = {}
+    for a in student_answers:
+        qn = a.get("question_number")
+        sa = str(a.get("selected_answer", "")).upper().strip()
+        if qn is not None and sa in ("A", "B", "C", "D"):
+            student_map[int(qn)] = sa
+
+    marks_per_question = test["total_marks"] / test["num_questions"]
+    correct_count = 0
+    comparison = []
+    for q in range(1, test["num_questions"] + 1):
+        student_ans = student_map.get(q, "?")
+        correct_ans = answer_key.get(q, "?")
+        is_correct = student_ans == correct_ans
+        if is_correct:
+            correct_count += 1
+        comparison.append({
+            "question_number": q,
+            "student_answer": student_ans,
+            "correct_answer": correct_ans,
+            "is_correct": is_correct,
+        })
+
+    score = round(correct_count * marks_per_question, 2)
+    if score == int(score):
+        score = int(score)
+    percentage = round((correct_count / test["num_questions"]) * 100, 1)
+    grade = compute_grade(percentage)
+
+    return comparison, score, percentage, grade, correct_count
+
+
+def _generate_child_code(conn):
+    row = conn.execute(
+        "SELECT MAX(CAST(SUBSTR(child_code, 4) AS INTEGER)) as max_num "
+        "FROM student_results WHERE child_code LIKE 'GRD%'"
+    ).fetchone()
+    num = (row["max_num"] or 0) + 1 if row else 1
+    return f"GRD{num:03d}"
+
+
 def extract_answers_with_claude(image_bytes: bytes, media_type: str, num_questions: int) -> list[dict]:
     image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
@@ -434,6 +481,95 @@ async def grade_student(
     }
 
 
+@app.post("/api/tests/{test_id}/grade-batch-item")
+async def grade_batch_item(
+    test_id: int,
+    student_name: str = Form(...),
+    answer_sheet: UploadFile = File(...),
+    teacher: dict = Depends(get_current_teacher),
+):
+    with db_session() as conn:
+        test = conn.execute(
+            "SELECT * FROM tests WHERE id = ? AND teacher_id = ?", (test_id, teacher["id"])
+        ).fetchone()
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        answer_key_rows = conn.execute(
+            "SELECT question_number, correct_answer FROM answer_keys WHERE test_id = ? ORDER BY question_number",
+            (test_id,),
+        ).fetchall()
+        if len(answer_key_rows) != test["num_questions"]:
+            raise HTTPException(status_code=400, detail="Answer key is incomplete.")
+
+    media_type = ALLOWED_IMAGE_TYPES.get(answer_sheet.content_type)
+    if not media_type:
+        raise HTTPException(status_code=400, detail="Upload a JPEG, PNG, WebP, or GIF image.")
+    image_bytes = await answer_sheet.read()
+    if len(image_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image must be under 20 MB.")
+
+    try:
+        student_answers = extract_answers_with_claude(image_bytes, media_type, test["num_questions"])
+    except anthropic.APIError as e:
+        raise HTTPException(status_code=502, detail=f"Claude API error: {e.message}")
+    except (ValueError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=502, detail=f"Could not parse Claude response: {str(e)}")
+
+    comparison, score, percentage, grade, correct_count = _score_answers(
+        student_answers, answer_key_rows, test
+    )
+
+    with db_session() as conn:
+        existing = conn.execute(
+            "SELECT id, child_code FROM student_results WHERE test_id = ? AND student_name = ?",
+            (test_id, student_name),
+        ).fetchone()
+
+        if existing:
+            conn.execute(
+                "UPDATE student_results SET answers_json = ?, score = ?, total_marks = ?, percentage = ?, grade = ?, graded_at = datetime('now') "
+                "WHERE id = ?",
+                (json.dumps(comparison), score, test["total_marks"], percentage, grade, existing["id"]),
+            )
+            result_id = existing["id"]
+            child_code = existing["child_code"] or _generate_child_code(conn)
+            if not existing["child_code"]:
+                conn.execute("UPDATE student_results SET child_code = ? WHERE id = ?", (child_code, result_id))
+        else:
+            child_code = _generate_child_code(conn)
+            cursor = conn.execute(
+                "INSERT INTO student_results (test_id, student_name, answers_json, score, total_marks, percentage, grade, child_code) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (test_id, student_name, json.dumps(comparison), score, test["total_marks"], percentage, grade, child_code),
+            )
+            result_id = cursor.lastrowid
+
+    return {
+        "result_id": result_id,
+        "student_name": student_name,
+        "score": score,
+        "total_marks": test["total_marks"],
+        "percentage": percentage,
+        "grade": grade,
+        "correct_count": correct_count,
+        "num_questions": test["num_questions"],
+        "comparison": comparison,
+        "child_code": child_code,
+    }
+
+
+@app.delete("/api/tests/{test_id}/results")
+def clear_results(test_id: int, teacher: dict = Depends(get_current_teacher)):
+    with db_session() as conn:
+        test = conn.execute(
+            "SELECT id FROM tests WHERE id = ? AND teacher_id = ?", (test_id, teacher["id"])
+        ).fetchone()
+        if not test:
+            raise HTTPException(status_code=404, detail="Test not found")
+        conn.execute("DELETE FROM student_results WHERE test_id = ?", (test_id,))
+    return {"message": "All results cleared"}
+
+
 @app.get("/api/tests/{test_id}/results")
 def get_results(test_id: int, teacher: dict = Depends(get_current_teacher)):
     with db_session() as conn:
@@ -443,7 +579,7 @@ def get_results(test_id: int, teacher: dict = Depends(get_current_teacher)):
         if not test:
             raise HTTPException(status_code=404, detail="Test not found")
         rows = conn.execute(
-            "SELECT id, student_name, score, total_marks, percentage, grade, answers_json, graded_at "
+            "SELECT id, student_name, score, total_marks, percentage, grade, answers_json, graded_at, child_code "
             "FROM student_results WHERE test_id = ? ORDER BY graded_at DESC",
             (test_id,),
         ).fetchall()

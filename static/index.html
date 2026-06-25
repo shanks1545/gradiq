@@ -125,7 +125,9 @@
                         </div>
                         <div class="detail-actions">
                             <button id="grade-btn" class="btn primary small">Grade Students</button>
+                            <button id="batch-grade-btn" class="btn primary small">Grade All Students</button>
                             <button id="edit-key-btn" class="btn outline small">Edit Answer Key</button>
+                            <button id="clear-results-btn" class="btn danger small">Clear All Results</button>
                             <button id="delete-test-btn" class="btn danger small">Delete</button>
                         </div>
                     </div>
@@ -198,6 +200,67 @@
                         <button class="btn outline" id="back-to-test-btn">Back to Test</button>
                         <button class="btn outline" id="res-pdf-btn">Download PDF</button>
                         <button class="btn outline wa-share-btn" id="res-wa-btn">Share on WhatsApp</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Batch Grade View -->
+            <section id="batch-grade-view" class="hidden">
+                <button class="btn text back-btn" id="batch-back-btn">&larr; Back to Test</button>
+                <h2>Batch Grade Students</h2>
+                <p id="batch-test-info" class="meta" style="margin-bottom:1.25rem"></p>
+
+                <div id="batch-upload-step" class="card form-card">
+                    <div class="field">
+                        <label>Upload Answer Sheets</label>
+                        <div class="upload-area" id="batch-upload-area">
+                            <input type="file" id="batch-file-input" accept="image/*" multiple="multiple">
+                            <div class="upload-placeholder" id="batch-upload-placeholder">
+                                <span class="upload-icon">&#x1f4f7;</span>
+                                <span>Click or drag multiple images here</span>
+                                <span class="upload-hint">JPEG, PNG, WebP, or GIF &middot; Max 20 MB each</span>
+                            </div>
+                        </div>
+                        <input type="file" id="batch-camera-input" accept="image/*" capture="environment" class="hidden">
+                        <button type="button" id="batch-camera-btn" class="btn outline full batch-camera-btn">
+                            &#x1f4f8; Use Camera
+                        </button>
+                    </div>
+                    <div id="batch-file-list" class="batch-file-list hidden"></div>
+                    <button type="button" id="batch-grade-all-btn" class="btn primary full hidden">
+                        Grade All
+                    </button>
+                </div>
+
+                <div id="batch-progress-step" class="card form-card hidden">
+                    <h3>Grading in Progress</h3>
+                    <div class="batch-progress">
+                        <div class="progress-bar-wrap">
+                            <div class="progress-bar" id="batch-progress-bar"></div>
+                        </div>
+                        <p id="batch-progress-text" class="batch-progress-text">Preparing...</p>
+                    </div>
+                </div>
+
+                <div id="batch-complete-step" class="card form-card hidden">
+                    <h3>Batch Grading Complete</h3>
+                    <div class="batch-summary">
+                        <div class="result-stat">
+                            <span class="stat-label">Total</span>
+                            <span class="stat-value" id="batch-total">0</span>
+                        </div>
+                        <div class="result-stat">
+                            <span class="stat-label">Graded</span>
+                            <span class="stat-value batch-success" id="batch-success">0</span>
+                        </div>
+                        <div class="result-stat">
+                            <span class="stat-label">Failed</span>
+                            <span class="stat-value batch-failed" id="batch-failed">0</span>
+                        </div>
+                    </div>
+                    <div id="batch-failures" class="batch-failures hidden"></div>
+                    <div class="result-actions" style="margin-top:1.25rem">
+                        <button class="btn primary" id="batch-view-results-btn">View Results</button>
                     </div>
                 </div>
             </section>
