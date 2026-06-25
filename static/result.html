@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GradiQ — Student Result</title>
+    <style>
+        :root {
+            --bg: #000;
+            --card-bg: rgba(255,255,255,0.05);
+            --card-border: rgba(255,255,255,0.09);
+            --text-primary: #fff;
+            --text-secondary: rgba(255,255,255,0.55);
+            --text-tertiary: rgba(255,255,255,0.3);
+            --teal: #2dd4bf;
+            --green: #30d158;
+            --red: #ff453a;
+            --amber: #ffd60a;
+            --radius: 20px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+
+        body {
+            background: var(--bg);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+            min-height: 100vh;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .hidden { display: none !important; }
+
+        /* ── Header ── */
+        .result-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 20px 32px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            position: sticky;
+            top: 0;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(20px) saturate(180%);
+            z-index: 10;
+        }
+        .result-logo {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            color: #fff;
+        }
+        .result-logo .accent { color: var(--teal); }
+        .result-powered {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            letter-spacing: 0.02em;
+        }
+
+        /* ── Loading ── */
+        .loading-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 70vh;
+            gap: 20px;
+        }
+        .loading-logo {
+            font-size: 36px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+        }
+        .loading-logo .accent { color: var(--teal); }
+        .loading-sub {
+            color: var(--text-secondary);
+            font-size: 15px;
+            letter-spacing: -0.01em;
+        }
+        .loading-dots { display: flex; gap: 6px; }
+        .loading-dots span {
+            width: 7px; height: 7px;
+            border-radius: 50%;
+            background: var(--teal);
+            animation: dotPulse 1.4s ease-in-out infinite;
+        }
+        .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes dotPulse {
+            0%, 80%, 100% { opacity: 0.25; transform: scale(0.75); }
+            40% { opacity: 1; transform: scale(1); }
+        }
+
+        /* ── Error ── */
+        .error-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 70vh;
+            gap: 12px;
+            text-align: center;
+            padding: 32px;
+        }
+        .error-icon {
+            font-size: 48px;
+            margin-bottom: 8px;
+            opacity: 0.5;
+        }
+        .error-state h2 {
+            font-size: 22px;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+        .error-state p {
+            color: var(--text-secondary);
+            font-size: 15px;
+            max-width: 340px;
+            line-height: 1.55;
+        }
+
+        /* ── Main ── */
+        .result-main {
+            max-width: 640px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+
+        @keyframes fadeUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .result-main > * {
+            animation: fadeUp 0.5s ease both;
+        }
+        .result-main > *:nth-child(1) { animation-delay: 0.05s; }
+        .result-main > *:nth-child(2) { animation-delay: 0.12s; }
+        .result-main > *:nth-child(3) { animation-delay: 0.19s; }
+        .result-main > *:nth-child(4) { animation-delay: 0.26s; }
+        .result-main > *:nth-child(5) { animation-delay: 0.33s; }
+
+        /* ── Hero card ── */
+        .hero-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 36px 28px 32px;
+            text-align: center;
+            margin-bottom: 16px;
+            backdrop-filter: blur(20px) saturate(180%);
+        }
+        .hero-institute {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--teal);
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            margin-bottom: 14px;
+        }
+        .hero-student {
+            font-size: 38px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            line-height: 1.05;
+            margin-bottom: 10px;
+        }
+        .hero-date {
+            font-size: 13px;
+            color: var(--text-tertiary);
+            letter-spacing: -0.01em;
+        }
+
+        /* ── Stats grid ── */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .stat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 20px 18px;
+            backdrop-filter: blur(20px) saturate(180%);
+        }
+        .stat-card.full { grid-column: span 2; }
+        .stat-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.09em;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+        }
+        .stat-value {
+            font-size: 30px;
+            font-weight: 700;
+            letter-spacing: -0.04em;
+            line-height: 1;
+        }
+        .stat-card.full .stat-value {
+            font-size: 20px;
+            letter-spacing: -0.02em;
+        }
+        .stat-sub {
+            font-size: 12px;
+            color: var(--text-tertiary);
+            margin-top: 5px;
+            letter-spacing: -0.01em;
+        }
+
+        /* Grade colours */
+        .grade-aplus { color: var(--teal); }
+        .grade-a     { color: var(--green); }
+        .grade-b     { color: #34d399; }
+        .grade-c     { color: var(--amber); }
+        .grade-d     { color: #fb923c; }
+        .grade-f     { color: var(--red); }
+
+        /* ── Performance message ── */
+        .perf-card {
+            border-radius: var(--radius);
+            padding: 24px 28px;
+            text-align: center;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, rgba(45,212,191,0.07), rgba(45,212,191,0.02));
+            border: 1px solid rgba(45,212,191,0.14);
+        }
+        .perf-emoji {
+            font-size: 40px;
+            margin-bottom: 12px;
+            display: block;
+        }
+        .perf-message {
+            font-size: 17px;
+            font-weight: 600;
+            line-height: 1.45;
+            letter-spacing: -0.015em;
+            color: var(--text-primary);
+        }
+
+        /* ── Answer breakdown ── */
+        .section-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 16px;
+            backdrop-filter: blur(20px) saturate(180%);
+        }
+        .section-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+        .answer-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+            gap: 8px;
+        }
+        .answer-item {
+            border-radius: 10px;
+            padding: 10px 6px;
+            text-align: center;
+        }
+        .answer-item.correct {
+            background: rgba(48,209,88,0.10);
+            border: 1px solid rgba(48,209,88,0.22);
+        }
+        .answer-item.wrong {
+            background: rgba(255,69,58,0.09);
+            border: 1px solid rgba(255,69,58,0.18);
+        }
+        .a-q {
+            font-size: 10px;
+            font-weight: 700;
+            opacity: 0.55;
+            display: block;
+            margin-bottom: 4px;
+            letter-spacing: 0.04em;
+        }
+        .a-student {
+            font-size: 15px;
+            font-weight: 700;
+            display: block;
+            letter-spacing: -0.01em;
+        }
+        .answer-item.correct .a-student { color: var(--green); }
+        .answer-item.wrong .a-student   { color: var(--red); }
+        .a-correct {
+            font-size: 11px;
+            display: block;
+            margin-top: 3px;
+            opacity: 0.6;
+            color: var(--green);
+        }
+
+        /* ── CTA card ── */
+        .cta-card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 36px 28px;
+            text-align: center;
+            backdrop-filter: blur(20px) saturate(180%);
+        }
+        .cta-eyebrow {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--teal);
+            margin-bottom: 12px;
+        }
+        .cta-title {
+            font-size: 21px;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            line-height: 1.25;
+            margin-bottom: 10px;
+        }
+        .cta-sub {
+            font-size: 14px;
+            color: var(--text-secondary);
+            line-height: 1.55;
+            margin-bottom: 26px;
+            max-width: 380px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        .cta-btn {
+            display: inline-block;
+            background: var(--teal);
+            color: #000;
+            font-weight: 700;
+            font-size: 15px;
+            padding: 14px 32px;
+            border-radius: 980px;
+            text-decoration: none;
+            letter-spacing: -0.01em;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+        .cta-btn:hover { opacity: 0.86; transform: scale(1.02); }
+        .cta-btn:active { transform: scale(0.98); }
+
+        /* ── Footer ── */
+        .result-footer {
+            text-align: center;
+            padding: 28px 24px;
+            font-size: 12px;
+            color: rgba(255,255,255,0.2);
+            letter-spacing: 0.01em;
+            border-top: 1px solid rgba(255,255,255,0.05);
+        }
+
+        @media (max-width: 480px) {
+            .result-header { padding: 16px 20px; }
+            .result-main { padding: 24px 16px 60px; }
+            .hero-student { font-size: 30px; }
+            .stats-grid { gap: 10px; }
+            .stat-value { font-size: 26px; }
+            .answer-grid { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+        }
+    </style>
+</head>
+<body>
+
+<header class="result-header">
+    <div class="result-logo">Gradi<span class="accent">Q</span></div>
+    <div class="result-powered">Powered by GradiQ</div>
+</header>
+
+<div id="result-loading" class="loading-state">
+    <div class="loading-logo">Gradi<span class="accent">Q</span></div>
+    <p class="loading-sub">Loading result...</p>
+    <div class="loading-dots"><span></span><span></span><span></span></div>
+</div>
+
+<div id="result-error" class="error-state hidden">
+    <div class="error-icon">&#128268;</div>
+    <h2>Result not found</h2>
+    <p>This link may be invalid or the result may have been removed. Please ask your teacher to resend the result link.</p>
+</div>
+
+<main id="result-main" class="result-main hidden">
+
+    <div class="hero-card">
+        <div class="hero-institute" id="r-institute"></div>
+        <div class="hero-student" id="r-student"></div>
+        <div class="hero-date" id="r-date"></div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-label">Score</div>
+            <div class="stat-value" id="r-score"></div>
+            <div class="stat-sub" id="r-score-sub"></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Percentage</div>
+            <div class="stat-value" id="r-pct"></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Grade</div>
+            <div class="stat-value" id="r-grade"></div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Subject</div>
+            <div class="stat-value" id="r-subject" style="font-size:18px;letter-spacing:-0.01em;line-height:1.2;padding-top:4px"></div>
+        </div>
+        <div class="stat-card full">
+            <div class="stat-label">Test</div>
+            <div class="stat-value" id="r-test"></div>
+        </div>
+    </div>
+
+    <div class="perf-card">
+        <span class="perf-emoji" id="r-perf-emoji"></span>
+        <div class="perf-message" id="r-perf-msg"></div>
+    </div>
+
+    <div class="section-card">
+        <div class="section-title">Answer Breakdown</div>
+        <div class="answer-grid" id="r-answers"></div>
+    </div>
+
+    <div class="cta-card">
+        <div class="cta-eyebrow">Track Progress Over Time</div>
+        <div class="cta-title">Want to track <span id="cta-name"></span>'s progress?</div>
+        <p class="cta-sub">Create a free account on GradiQ to view all results, performance trends, and teacher notes — anytime, anywhere.</p>
+        <a href="https://gradiq.co.in" class="cta-btn" target="_blank" rel="noopener">Create Free Account</a>
+    </div>
+
+</main>
+
+<footer class="result-footer">
+    Generated by GradiQ &mdash; AI-Powered Exam Grading for India
+</footer>
+
+<script>
+    function gradeColorClass(grade) {
+        if (grade === 'A+') return 'grade-aplus';
+        if (grade === 'A')  return 'grade-a';
+        if (grade === 'B')  return 'grade-b';
+        if (grade === 'C')  return 'grade-c';
+        if (grade === 'D')  return 'grade-d';
+        return 'grade-f';
+    }
+
+    function perfMessage(grade) {
+        if (grade === 'A+') return ['🏆', 'Outstanding performance! A perfect result — keep it up.'];
+        if (grade === 'A')  return ['⭐', 'Excellent work! A brilliant result. Aim even higher next time.'];
+        if (grade === 'B')  return ['👍', 'Good effort! Solid performance. A little more focus and you\'ll reach the top.'];
+        if (grade === 'C')  return ['📚', 'Good effort. There\'s room to grow — identify the weak areas and keep practising.'];
+        if (grade === 'D')  return ['💪', 'Needs improvement. Don\'t give up — consistent practice will make a real difference.'];
+        return ['📖', 'Needs improvement. Stay positive and keep practising. Reach out to your teacher for help.'];
+    }
+
+    function esc(str) {
+        if (str == null) return '';
+        const d = document.createElement('div');
+        d.textContent = String(str);
+        return d.innerHTML;
+    }
+
+    function formatDate(str) {
+        if (!str) return '';
+        try {
+            const s = str.includes('T') || str.endsWith('Z') ? str : str + ' UTC';
+            return new Date(s).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+        } catch (_) { return str; }
+    }
+
+    const pathToken = (window.location.pathname.split('/result/')[1] || '').replace(/\/$/, '');
+
+    async function loadResult() {
+        if (!pathToken) { showError(); return; }
+        try {
+            const res = await fetch('/public/result/' + pathToken);
+            if (!res.ok) throw new Error('not found');
+            const data = await res.json();
+            renderResult(data);
+        } catch (_) {
+            showError();
+        }
+    }
+
+    function showError() {
+        document.getElementById('result-loading').classList.add('hidden');
+        document.getElementById('result-error').classList.remove('hidden');
+    }
+
+    function renderResult(data) {
+        document.title = data.student_name + ' — GradiQ Result';
+
+        document.getElementById('r-institute').textContent = data.institute_name || 'GradiQ';
+        document.getElementById('r-student').textContent   = data.student_name;
+        document.getElementById('r-date').textContent      = 'Graded on ' + formatDate(data.graded_at);
+        document.getElementById('r-test').textContent      = data.test_name;
+        document.getElementById('r-subject').textContent   = data.subject;
+        document.getElementById('r-score').textContent     = data.score + ' / ' + data.total_marks;
+        document.getElementById('r-score-sub').textContent = 'out of ' + data.total_marks + ' marks';
+        document.getElementById('r-pct').textContent       = data.percentage + '%';
+
+        const gradeEl = document.getElementById('r-grade');
+        gradeEl.textContent = data.grade;
+        gradeEl.className = 'stat-value ' + gradeColorClass(data.grade);
+
+        const [emoji, msg] = perfMessage(data.grade);
+        document.getElementById('r-perf-emoji').textContent = emoji;
+        document.getElementById('r-perf-msg').textContent   = msg;
+
+        document.getElementById('cta-name').textContent = data.student_name;
+
+        const grid = document.getElementById('r-answers');
+        grid.innerHTML = data.comparison.map(c => {
+            const cls = c.is_correct ? 'correct' : 'wrong';
+            const wrongLabel = !c.is_correct ? '<span class="a-correct">&#10003; ' + esc(c.correct_answer) + '</span>' : '';
+            return '<div class="answer-item ' + cls + '">' +
+                '<span class="a-q">Q' + c.question_number + '</span>' +
+                '<span class="a-student">' + esc(c.student_answer) + '</span>' +
+                wrongLabel +
+                '</div>';
+        }).join('');
+
+        document.getElementById('result-loading').classList.add('hidden');
+        document.getElementById('result-main').classList.remove('hidden');
+    }
+
+    loadResult();
+</script>
+</body>
+</html>

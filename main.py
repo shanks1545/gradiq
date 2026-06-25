@@ -3,6 +3,7 @@ import os
 import json
 import base64
 import re
+import secrets
 from io import BytesIO
 from datetime import datetime, timedelta, timezone
 from contextlib import contextmanager
@@ -99,6 +100,10 @@ def init_db():
         """)
         try:
             conn.execute("ALTER TABLE student_results ADD COLUMN child_code TEXT")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            conn.execute("ALTER TABLE student_results ADD COLUMN public_token TEXT")
         except sqlite3.OperationalError:
             pass
         try:
@@ -293,7 +298,6 @@ def get_profile(teacher: dict = Depends(get_current_teacher)):
 def invite_teacher(body: InviteTeacher, teacher: dict = Depends(get_current_teacher)):
     if (teacher.get("role") or "owner") != "owner":
         raise HTTPException(status_code=403, detail="Only institute owners can invite teachers")
-    import secrets
     temp_password = secrets.token_urlsafe(8)
     with db_session() as conn:
         existing = conn.execute("SELECT id FROM teachers WHERE email = ?", (body.email,)).fetchone()
@@ -877,10 +881,11 @@ async def grade_student(
     print(f"\nResult: {correct_count}/{test['num_questions']} correct, score={score}/{test['total_marks']}, {percentage}%, grade={grade}")
     print(f"{'='*60}\n")
 
+    pub_token = secrets.token_hex(6)
     with db_session() as conn:
         cursor = conn.execute(
-            "INSERT INTO student_results (test_id, student_name, answers_json, score, total_marks, percentage, grade) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (test_id, student_name, json.dumps(comparison), score, test["total_marks"], percentage, grade),
+            "INSERT INTO student_results (test_id, student_name, answers_json, score, total_marks, percentage, grade, public_token) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (test_id, student_name, json.dumps(comparison), score, test["total_marks"], percentage, grade, pub_token),
         )
         result_id = cursor.lastrowid
 
@@ -894,6 +899,7 @@ async def grade_student(
         "correct_count": correct_count,
         "num_questions": test["num_questions"],
         "comparison": comparison,
+        "public_token": pub_token,
     }
 
 
@@ -939,7 +945,7 @@ async def grade_batch_item(
 
     with db_session() as conn:
         existing = conn.execute(
-            "SELECT id, child_code FROM student_results WHERE test_id = ? AND student_name = ?",
+            "SELECT id, child_code, public_token FROM student_results WHERE test_id = ? AND student_name = ?",
             (test_id, student_name),
         ).fetchone()
 
@@ -953,12 +959,16 @@ async def grade_batch_item(
             child_code = existing["child_code"] or _generate_child_code(conn)
             if not existing["child_code"]:
                 conn.execute("UPDATE student_results SET child_code = ? WHERE id = ?", (child_code, result_id))
+            pub_token = existing["public_token"] or secrets.token_hex(6)
+            if not existing["public_token"]:
+                conn.execute("UPDATE student_results SET public_token = ? WHERE id = ?", (pub_token, result_id))
         else:
             child_code = _generate_child_code(conn)
+            pub_token = secrets.token_hex(6)
             cursor = conn.execute(
-                "INSERT INTO student_results (test_id, student_name, answers_json, score, total_marks, percentage, grade, child_code) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (test_id, student_name, json.dumps(comparison), score, test["total_marks"], percentage, grade, child_code),
+                "INSERT INTO student_results (test_id, student_name, answers_json, score, total_marks, percentage, grade, child_code, public_token) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (test_id, student_name, json.dumps(comparison), score, test["total_marks"], percentage, grade, child_code, pub_token),
             )
             result_id = cursor.lastrowid
 
@@ -973,6 +983,7 @@ async def grade_batch_item(
         "num_questions": test["num_questions"],
         "comparison": comparison,
         "child_code": child_code,
+        "public_token": pub_token,
     }
 
 
@@ -997,7 +1008,7 @@ def get_results(test_id: int, teacher: dict = Depends(get_current_teacher)):
         if not test:
             raise HTTPException(status_code=404, detail="Test not found")
         rows = conn.execute(
-            "SELECT id, student_name, score, total_marks, percentage, grade, answers_json, graded_at, child_code "
+            "SELECT id, student_name, score, total_marks, percentage, grade, answers_json, graded_at, child_code, public_token "
             "FROM student_results WHERE test_id = ? ORDER BY graded_at DESC",
             (test_id,),
         ).fetchall()
@@ -1205,9 +1216,46 @@ def download_pdf(result_id: int, teacher: dict = Depends(get_current_teacher)):
     )
 
 
+# ── Public result endpoint ────────────────────────────────────────────
+
+@app.get("/public/result/{pub_token}")
+def get_public_result(pub_token: str):
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT sr.student_name, sr.score, sr.total_marks, sr.percentage, sr.grade, "
+            "sr.answers_json, sr.graded_at, t.name AS test_name, t.subject, "
+            "tea.institute_name "
+            "FROM student_results sr "
+            "JOIN tests t ON sr.test_id = t.id "
+            "JOIN teachers tea ON t.teacher_id = tea.id "
+            "WHERE sr.public_token = ?",
+            (pub_token,),
+        ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Result not found")
+    result = dict(row)
+    comparison = json.loads(result.pop("answers_json"))
+    result["comparison"] = [
+        {
+            "question_number": c["question_number"],
+            "student_answer": c["student_answer"],
+            "correct_answer": c["correct_answer"],
+            "is_correct": c["is_correct"],
+            "question_type": c.get("question_type", "mcq"),
+        }
+        for c in comparison
+    ]
+    return result
+
+
 # ── Static files ─────────────────────────────────────────────────────
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/result/{token}")
+def serve_result_page(token: str):
+    return FileResponse("static/result.html")
 
 
 @app.get("/")

@@ -656,20 +656,21 @@ function formatWaTemplate(vars) {
     return text;
 }
 
-function shareWhatsApp(studentName, score, percentage, grade, testName) {
+function shareWhatsApp(studentName, score, percentage, grade, testName, publicToken) {
     const total = score.includes('/') ? score.split('/')[1] : score;
     const scoreVal = score.includes('/') ? score.split('/')[0] : score;
-    const text = formatWaTemplate({
+    let text = formatWaTemplate({
         student_name: studentName, score: scoreVal, total: total,
         percentage: percentage, grade: grade,
         test_name: testName || 'Test', institute_name: instituteName || 'GradiQ',
     });
+    if (publicToken) text += `\nView full result: gradiq.co.in/result/${publicToken}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
 }
 
 function shareWhatsAppById(resultId) {
     const r = currentResults[resultId];
-    if (r) shareWhatsApp(r.student_name, `${r.score}/${r.total_marks}`, r.percentage, r.grade);
+    if (r) shareWhatsApp(r.student_name, `${r.score}/${r.total_marks}`, r.percentage, r.grade, null, r.public_token);
 }
 
 async function deleteResult(resultId) {
@@ -910,7 +911,7 @@ function showGradeResult(data, imageUrl) {
 
     document.getElementById('res-pdf-btn').onclick = () => downloadPdf(data.result_id);
     document.getElementById('res-wa-btn').onclick = () =>
-        shareWhatsApp(data.student_name, `${data.score}/${data.total_marks}`, data.percentage, data.grade);
+        shareWhatsApp(data.student_name, `${data.score}/${data.total_marks}`, data.percentage, data.grade, null, data.public_token);
 
     document.getElementById('grade-result').classList.remove('hidden');
 }
