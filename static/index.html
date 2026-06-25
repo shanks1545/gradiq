@@ -114,12 +114,122 @@
         </div>
     </div>
 
+    <!-- ───── Onboarding Screen ───── -->
+    <div id="onboarding-screen" class="screen">
+        <div class="onboarding-container">
+            <div class="onboarding-progress">
+                <span class="onboarding-step-label" id="ob-step-label">Step 1 of 3</span>
+                <div class="onboarding-dots">
+                    <span class="ob-dot active" id="ob-dot-1"></span>
+                    <span class="ob-dot" id="ob-dot-2"></span>
+                    <span class="ob-dot" id="ob-dot-3"></span>
+                </div>
+            </div>
+            <div class="onboarding-steps" id="ob-steps">
+                <div class="ob-step active" id="ob-step-1">
+                    <h2 class="ob-title" id="ob-welcome">Welcome to GradiQ!</h2>
+                    <p class="ob-sub">Let's get you set up.</p>
+                    <div class="card ob-card">
+                        <div class="field">
+                            <label for="ob-institute">Institute Name</label>
+                            <input type="text" id="ob-institute" required placeholder="e.g. FIITJEE Kota, Delhi Public School">
+                        </div>
+                        <div class="field">
+                            <label for="ob-city">City</label>
+                            <input type="text" id="ob-city" required placeholder="e.g. Delhi, Kota, Mumbai">
+                        </div>
+                        <div class="ob-row">
+                            <div class="field">
+                                <label for="ob-board">Board Affiliation</label>
+                                <select id="ob-board">
+                                    <option value="CBSE">CBSE</option>
+                                    <option value="ICSE">ICSE</option>
+                                    <option value="State Board">State Board</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <div class="field">
+                                <label for="ob-students">Number of Students</label>
+                                <select id="ob-students">
+                                    <option value="Under 100">Under 100</option>
+                                    <option value="100-500">100-500</option>
+                                    <option value="500-1000">500-1000</option>
+                                    <option value="1000+">1000+</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="button" class="btn primary full" id="ob-next-1">Next</button>
+                    </div>
+                </div>
+                <div class="ob-step" id="ob-step-2">
+                    <h2 class="ob-title">Create your first test</h2>
+                    <p class="ob-sub">Try GradiQ with a quick test.</p>
+                    <div class="card ob-card">
+                        <div class="field">
+                            <label for="ob-test-name">Test Name</label>
+                            <input type="text" id="ob-test-name" value="Sample Quiz" placeholder="e.g. Midterm Exam">
+                        </div>
+                        <div class="field">
+                            <label for="ob-test-subject">Subject</label>
+                            <input type="text" id="ob-test-subject" value="General" placeholder="e.g. Biology">
+                        </div>
+                        <div class="ob-row">
+                            <div class="field">
+                                <label for="ob-test-questions">Questions</label>
+                                <input type="number" id="ob-test-questions" value="5" min="1" max="200">
+                            </div>
+                            <div class="field">
+                                <label for="ob-test-marks">Total Marks</label>
+                                <input type="number" id="ob-test-marks" value="10" min="1">
+                            </div>
+                        </div>
+                        <button type="button" class="btn primary full" id="ob-next-2">Create &amp; Continue</button>
+                        <button type="button" class="btn text full" id="ob-skip-2" style="margin-top:8px">Skip for now</button>
+                    </div>
+                </div>
+                <div class="ob-step" id="ob-step-3">
+                    <div class="ob-done-check" id="ob-check">&#10003;</div>
+                    <h2 class="ob-title">You're all set!</h2>
+                    <p class="ob-sub">GradiQ is ready for your first class.<br>Grade your first student in under 30 seconds.</p>
+                    <button type="button" class="btn primary full" id="ob-finish" style="margin-top:32px">Go to Dashboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ───── Settings Modal ───── -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <button class="modal-close" id="close-settings-btn">&times;</button>
+            <h2 class="modal-logo">Settings</h2>
+            <div class="field">
+                <label for="settings-institute">Institute Name</label>
+                <input type="text" id="settings-institute" placeholder="Institute name">
+            </div>
+            <div class="field">
+                <label for="settings-city">City</label>
+                <input type="text" id="settings-city" placeholder="City">
+            </div>
+            <div class="field">
+                <label for="settings-board">Board Affiliation</label>
+                <select id="settings-board">
+                    <option value="CBSE">CBSE</option>
+                    <option value="ICSE">ICSE</option>
+                    <option value="State Board">State Board</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <button type="button" class="btn primary full" id="save-settings-btn">Save Changes</button>
+        </div>
+    </div>
+
     <!-- ───── Dashboard Screen ───── -->
     <div id="dashboard-screen" class="screen">
         <nav class="topbar">
             <h1 class="nav-logo">Gradi<span class="accent">Q</span></h1>
             <div class="nav-right">
                 <span id="teacher-name"></span>
+                <button id="settings-btn" class="topbar-icon-btn" title="Settings">&#9881;</button>
                 <button id="logout-btn" class="btn outline small">Log Out</button>
             </div>
         </nav>

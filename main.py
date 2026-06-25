@@ -105,6 +105,11 @@ def init_db():
             conn.execute("ALTER TABLE tests ADD COLUMN question_types TEXT")
         except sqlite3.OperationalError:
             pass
+        for col in ("institute_name", "city", "board", "student_count"):
+            try:
+                conn.execute(f"ALTER TABLE teachers ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='answer_keys'").fetchone()
         if row and "CHECK" in row["sql"]:
             conn.executescript("""
@@ -144,6 +149,13 @@ class ScoreUpdate(BaseModel):
     score: float
 
 
+class ProfileUpdate(BaseModel):
+    institute_name: str | None = None
+    city: str | None = None
+    board: str | None = None
+    student_count: str | None = None
+
+
 class AnswerKeyEntry(BaseModel):
     question_number: int
     correct_answer: str
@@ -179,7 +191,7 @@ def get_current_teacher(token: str = Depends(oauth2_scheme)) -> dict:
         raise credentials_exception
 
     with db_session() as conn:
-        row = conn.execute("SELECT id, name, email FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
+        row = conn.execute("SELECT id, name, email, institute_name FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
     if row is None:
         raise credentials_exception
     return dict(row)
@@ -208,7 +220,27 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
     if not row or not pwd_context.verify(form_data.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     token = create_access_token({"sub": str(row["id"])})
-    return {"access_token": token, "token_type": "bearer", "teacher_name": row["name"]}
+    return {"access_token": token, "token_type": "bearer", "teacher_name": row["name"], "institute_name": row["institute_name"] or ""}
+
+
+@app.patch("/api/profile")
+def update_profile(body: ProfileUpdate, teacher: dict = Depends(get_current_teacher)):
+    with db_session() as conn:
+        conn.execute(
+            "UPDATE teachers SET institute_name = ?, city = ?, board = ?, student_count = ? WHERE id = ?",
+            (body.institute_name, body.city, body.board, body.student_count, teacher["id"]),
+        )
+    return {"message": "Profile updated", "institute_name": body.institute_name or ""}
+
+
+@app.get("/api/profile")
+def get_profile(teacher: dict = Depends(get_current_teacher)):
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT institute_name, city, board, student_count FROM teachers WHERE id = ?",
+            (teacher["id"],),
+        ).fetchone()
+    return dict(row) if row else {}
 
 
 # ── Test routes ──────────────────────────────────────────────────────

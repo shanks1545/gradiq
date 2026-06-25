@@ -38,7 +38,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.add('active');
         document.getElementById(`${tab.dataset.tab}-form`).classList.add('active');
         document.getElementById('auth-error').textContent = '';
-        clearAuthInputs();
+        if (tab.dataset.tab === 'register') clearAuthInputs();
     });
 });
 
@@ -69,21 +69,29 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
     e.preventDefault();
     const errEl = document.getElementById('auth-error');
     errEl.textContent = '';
+    const regEmail = document.getElementById('reg-email').value;
+    const regPassword = document.getElementById('reg-password').value;
+    const regName = document.getElementById('reg-name').value;
     try {
         await api('/api/register', {
             method: 'POST',
-            body: {
-                name: document.getElementById('reg-name').value,
-                email: document.getElementById('reg-email').value,
-                password: document.getElementById('reg-password').value,
-            }
+            body: { name: regName, email: regEmail, password: regPassword }
         });
-        toast('Account created! Please log in.');
-        document.querySelector('[data-tab="login"]').click();
-        document.getElementById('login-email').value = document.getElementById('reg-email').value;
-        document.getElementById('reg-name').value = '';
-        document.getElementById('reg-email').value = '';
-        document.getElementById('reg-password').value = '';
+        const loginData = await fetch('/api/login', {
+            method: 'POST',
+            body: new URLSearchParams({ username: regEmail, password: regPassword }),
+        });
+        const loginJson = await loginData.json();
+        if (!loginData.ok) throw new Error(loginJson.detail);
+        token = loginJson.access_token;
+        teacherName = loginJson.teacher_name;
+        instituteName = loginJson.institute_name || '';
+        localStorage.setItem('gradiq_token', token);
+        localStorage.setItem('gradiq_name', teacherName);
+        localStorage.setItem('gradiq_institute', instituteName);
+        localStorage.removeItem('gradiq_onboarded');
+        document.getElementById('auth-modal').classList.add('hidden');
+        startOnboarding();
     } catch (err) {
         errEl.textContent = err.message;
     }
@@ -1008,8 +1016,119 @@ document.getElementById('annotation-toggle').addEventListener('click', function 
     this.textContent = isHidden ? 'Show Answer Sheet' : 'Hide Answer Sheet';
 });
 
+// ── Onboarding ───────────────────────────────────────────────
+
+function startOnboarding() {
+    document.getElementById('auth-screen').classList.remove('active');
+    document.getElementById('dashboard-screen').classList.remove('active');
+    document.getElementById('onboarding-screen').classList.add('active');
+    document.querySelectorAll('#onboarding-screen input, #onboarding-screen select').forEach(el => {
+        if (el.tagName === 'SELECT') el.selectedIndex = 0;
+        else el.value = '';
+    });
+    document.getElementById('ob-welcome').textContent = `Welcome to GradiQ, ${teacherName}!`;
+    showObStep(1);
+}
+
+function showObStep(n) {
+    document.querySelectorAll('.ob-step').forEach(s => s.classList.remove('active'));
+    document.getElementById(`ob-step-${n}`).classList.add('active');
+    document.getElementById('ob-step-label').textContent = `Step ${n} of 3`;
+    for (let i = 1; i <= 3; i++) {
+        const dot = document.getElementById(`ob-dot-${i}`);
+        dot.classList.toggle('active', i <= n);
+    }
+    if (n === 3) {
+        const check = document.getElementById('ob-check');
+        check.classList.remove('ob-check-anim');
+        void check.offsetWidth;
+        check.classList.add('ob-check-anim');
+    }
+}
+
+document.getElementById('ob-next-1').addEventListener('click', async () => {
+    const inst = document.getElementById('ob-institute').value.trim();
+    const city = document.getElementById('ob-city').value.trim();
+    if (!inst || !city) { toast('Please fill in institute name and city.', true); return; }
+    try {
+        await api('/api/profile', {
+            method: 'PATCH',
+            body: {
+                institute_name: inst, city: city,
+                board: document.getElementById('ob-board').value,
+                student_count: document.getElementById('ob-students').value,
+            }
+        });
+        instituteName = inst;
+        localStorage.setItem('gradiq_institute', instituteName);
+        showObStep(2);
+    } catch (err) { toast(err.message, true); }
+});
+
+document.getElementById('ob-next-2').addEventListener('click', async () => {
+    const name = document.getElementById('ob-test-name').value.trim();
+    const subject = document.getElementById('ob-test-subject').value.trim();
+    const questions = parseInt(document.getElementById('ob-test-questions').value);
+    const marks = parseInt(document.getElementById('ob-test-marks').value);
+    if (!name || !subject || !questions || !marks) { toast('Please fill in all fields.', true); return; }
+    try {
+        await api('/api/tests', { method: 'POST', body: { name, subject, total_marks: marks, num_questions: questions } });
+        showObStep(3);
+    } catch (err) { toast(err.message, true); }
+});
+
+document.getElementById('ob-skip-2').addEventListener('click', () => showObStep(3));
+
+document.getElementById('ob-finish').addEventListener('click', () => {
+    localStorage.setItem('gradiq_onboarded', '1');
+    document.getElementById('onboarding-screen').classList.remove('active');
+    enterDashboard();
+});
+
+// ── Settings ─────────────────────────────────────────────────
+
+document.getElementById('settings-btn').addEventListener('click', async () => {
+    try {
+        const profile = await api('/api/profile');
+        document.getElementById('settings-institute').value = profile.institute_name || '';
+        document.getElementById('settings-city').value = profile.city || '';
+        document.getElementById('settings-board').value = profile.board || 'CBSE';
+    } catch (_) {}
+    document.getElementById('settings-modal').classList.remove('hidden');
+});
+
+document.getElementById('close-settings-btn').addEventListener('click', () => {
+    document.getElementById('settings-modal').classList.add('hidden');
+});
+
+document.getElementById('settings-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
+});
+
+document.getElementById('save-settings-btn').addEventListener('click', async () => {
+    try {
+        const res = await api('/api/profile', {
+            method: 'PATCH',
+            body: {
+                institute_name: document.getElementById('settings-institute').value.trim(),
+                city: document.getElementById('settings-city').value.trim(),
+                board: document.getElementById('settings-board').value,
+            }
+        });
+        instituteName = res.institute_name || '';
+        localStorage.setItem('gradiq_institute', instituteName);
+        renderTeacherName();
+        document.getElementById('settings-modal').classList.add('hidden');
+        toast('Settings saved!');
+    } catch (err) { toast(err.message, true); }
+});
+
 // ── Init ──────────────────────────────────────────────────────
 
 if (token) {
-    enterDashboard();
+    if (!localStorage.getItem('gradiq_onboarded')) {
+        startOnboarding();
+    } else {
+        enterDashboard();
+    }
 }
