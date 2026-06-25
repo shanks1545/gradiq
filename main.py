@@ -334,9 +334,11 @@ def _check_answer(student_ans, correct_ans, qtype):
 
 def _build_student_map(student_answers, question_types):
     student_map = {}
+    confidence_map = {}
     for a in student_answers:
         qn = a.get("question_number")
         sa = str(a.get("selected_answer", "")).strip()
+        conf = a.get("confidence", "high")
         if qn is None or not sa:
             continue
         qi = int(qn)
@@ -345,16 +347,44 @@ def _build_student_map(student_answers, question_types):
             sa = sa.upper()
             if sa in ("A", "B", "C", "D"):
                 student_map[qi] = sa
+                confidence_map[qi] = conf
         else:
             student_map[qi] = sa
-    return student_map
+            confidence_map[qi] = conf
+    return student_map, confidence_map
+
+
+def _derive_confidence(student_ans, correct_ans, qtype, ai_confidence):
+    """Downgrade AI confidence based on answer characteristics."""
+    if student_ans == "?":
+        return "low"
+
+    if qtype == "mcq":
+        if student_ans not in ("A", "B", "C", "D"):
+            return "low"
+    elif qtype == "tf":
+        norm = _normalize_tf(student_ans)
+        if norm not in ("true", "false"):
+            return "low"
+        if student_ans.strip().lower() not in ("true", "false"):
+            if ai_confidence == "high":
+                return "medium"
+    elif qtype == "fill":
+        stripped = student_ans.strip()
+        if len(stripped) <= 1:
+            return "low"
+        if not stripped.replace(" ", "").isalnum():
+            if ai_confidence == "high":
+                return "medium"
+
+    return ai_confidence
 
 
 def _score_answers(student_answers, answer_key_rows, test, question_types=None):
     if question_types is None:
         question_types = ["mcq"] * test["num_questions"]
     answer_key = {r["question_number"]: r["correct_answer"] for r in answer_key_rows}
-    student_map = _build_student_map(student_answers, question_types)
+    student_map, confidence_map = _build_student_map(student_answers, question_types)
 
     marks_per_question = test["total_marks"] / test["num_questions"]
     correct_count = 0
@@ -366,12 +396,15 @@ def _score_answers(student_answers, answer_key_rows, test, question_types=None):
         is_correct = _check_answer(student_ans, correct_ans, qt)
         if is_correct:
             correct_count += 1
+        ai_conf = confidence_map.get(q, "high")
+        conf = _derive_confidence(student_ans, correct_ans, qt, ai_conf)
         comparison.append({
             "question_number": q,
             "student_answer": student_ans,
             "correct_answer": correct_ans,
             "is_correct": is_correct,
             "question_type": qt,
+            "confidence": conf,
         })
 
     score = round(correct_count * marks_per_question, 2)
@@ -398,6 +431,19 @@ def extract_answers_with_claude(image_bytes: bytes, media_type: str, num_questio
 
     has_mixed = len(set(qtypes)) > 1 or qtypes[0] != "mcq"
 
+    conf_instruction = (
+        'Also include "confidence" ("high", "medium", or "low") for each answer. '
+        "Be critical and realistic — do NOT default to high for everything. "
+        '"high" = the mark or writing is completely unambiguous, clearly one option with no doubt. '
+        '"medium" = you can read it but there is some uncertainty — messy handwriting, '
+        "a partially erased answer, a letter that could be read two ways, light or faint marks, "
+        "multiple marks where one was crossed out, or a bubble not fully filled. "
+        '"low" = the answer is very difficult to read, could plausibly be multiple different answers, '
+        "the area appears blank or smudged, or you are mostly guessing. "
+        "Most real student handwriting should have a mix of confidence levels. "
+        "If in doubt between high and medium, choose medium."
+    )
+
     if not has_mixed:
         prompt = (
             f"This is a photo of a student's MCQ answer sheet with {num_questions} questions. "
@@ -405,7 +451,8 @@ def extract_answers_with_claude(image_bytes: bytes, media_type: str, num_questio
             f"(by circling, shading, ticking, or otherwise indicating their choice).\n\n"
             f"Extract the student's selected answer for each question from Q1 to Q{num_questions}.\n\n"
             f"Return ONLY a JSON array with exactly {num_questions} objects, each with "
-            f'"question_number" (integer) and "selected_answer" (one of "A", "B", "C", "D"). '
+            f'"question_number" (integer), "selected_answer" (one of "A", "B", "C", "D"), '
+            f"and {conf_instruction}\n"
             f"If a question appears unanswered or unclear, use your best judgment. "
             f"Return ONLY the JSON array, no other text."
         )
@@ -428,16 +475,17 @@ def extract_answers_with_claude(image_bytes: bytes, media_type: str, num_questio
             f"For True/False questions: determine if the student indicated True or False "
             f"(may be written as True/False, T/F, Yes/No, or by ticking/circling one option).\n\n"
             f"Return ONLY a JSON array with exactly {num_questions} objects, each with "
-            f'"question_number" (integer) and "selected_answer" '
+            f'"question_number" (integer), "selected_answer" '
             f'(for MCQ: one of "A","B","C","D"; for Fill in the Blank: the text written; '
-            f'for True/False: "True" or "False").\n'
+            f'for True/False: "True" or "False"), '
+            f"and {conf_instruction}\n"
             f"If a question appears unanswered or unclear, use your best judgment. "
             f"Return ONLY the JSON array, no other text."
         )
 
     response = claude_client.messages.create(
         model="claude-sonnet-4-6",
-        max_tokens=1024,
+        max_tokens=2048,
         messages=[
             {
                 "role": "user",
@@ -510,7 +558,7 @@ async def grade_student(
         raise HTTPException(status_code=502, detail=f"Could not parse Claude response: {str(e)}")
 
     answer_key = {r["question_number"]: r["correct_answer"] for r in answer_key_rows}
-    student_map = _build_student_map(student_answers, question_types)
+    student_map, confidence_map = _build_student_map(student_answers, question_types)
 
     print(f"\n{'='*60}")
     print(f"GRADING DEBUG — Student: {student_name}, Test: {test['name']} (id={test_id})")
@@ -520,7 +568,7 @@ async def grade_student(
         print(f"  Q{q}: {answer_key[q]}")
     print(f"\nClaude extracted answers ({len(student_map)} questions):")
     for q in sorted(student_map):
-        print(f"  Q{q}: {student_map[q]}")
+        print(f"  Q{q}: {student_map[q]} (conf={confidence_map.get(q, 'high')})")
     if len(answer_key) != len(student_map):
         print(f"\n⚠  MISMATCH: answer key has {len(answer_key)} questions, Claude extracted {len(student_map)}")
     print(f"\nQuestion-by-question comparison:")
@@ -532,17 +580,20 @@ async def grade_student(
         student_ans = student_map.get(q, "?")
         correct_ans = answer_key.get(q, "?")
         qt = question_types[q - 1] if q <= len(question_types) else "mcq"
+        ai_conf = confidence_map.get(q, "high")
+        conf = _derive_confidence(student_ans, correct_ans, qt, ai_conf)
         is_correct = _check_answer(student_ans, correct_ans, qt)
         if is_correct:
             correct_count += 1
         status = "✓" if is_correct else "✗"
-        print(f"  Q{q} [{qt}]: student={student_ans} key={correct_ans} {status}")
+        print(f"  Q{q} [{qt}]: student={student_ans} key={correct_ans} {status} (ai_conf={ai_conf} -> {conf})")
         comparison.append({
             "question_number": q,
             "student_answer": student_ans,
             "correct_answer": correct_ans,
             "is_correct": is_correct,
             "question_type": qt,
+            "confidence": conf,
         })
 
     score = round(correct_count * marks_per_question, 2)

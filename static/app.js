@@ -574,9 +574,12 @@ document.getElementById('grade-form').addEventListener('submit', async (e) => {
     btn.classList.add('loading');
     btn.textContent = 'Analyzing with AI...';
 
+    const imageFile = document.getElementById('answer-sheet-input').files[0];
+    const imageUrl = imageFile ? URL.createObjectURL(imageFile) : null;
+
     const formData = new FormData();
     formData.append('student_name', document.getElementById('student-name').value);
-    formData.append('answer_sheet', document.getElementById('answer-sheet-input').files[0]);
+    formData.append('answer_sheet', imageFile);
 
     try {
         const res = await fetch(`/api/tests/${currentTestId}/grade`, {
@@ -588,7 +591,7 @@ document.getElementById('grade-form').addEventListener('submit', async (e) => {
         if (!res.ok) throw new Error(data.detail || 'Grading failed');
 
         document.getElementById('grade-form').classList.add('hidden');
-        showGradeResult(data);
+        showGradeResult(data, imageUrl);
     } catch (err) {
         toast(err.message, true);
         btn.classList.remove('loading');
@@ -596,7 +599,7 @@ document.getElementById('grade-form').addEventListener('submit', async (e) => {
     }
 });
 
-function showGradeResult(data) {
+function showGradeResult(data, imageUrl) {
     document.getElementById('res-student').textContent = data.student_name;
     document.getElementById('res-score').textContent = `${data.score} / ${data.total_marks}`;
     document.getElementById('res-pct').textContent = `${data.percentage}%`;
@@ -608,8 +611,40 @@ function showGradeResult(data) {
         const label = c.is_correct ? c.student_answer : `${c.student_answer} (${c.correct_answer})`;
         const qt = c.question_type || 'mcq';
         const typeLabel = { mcq: 'M', fill: 'F', tf: 'T/F' }[qt] || 'M';
-        return `<div class="cmp-item ${cls}"><span class="cmp-q">Q${c.question_number}</span><span class="cmp-type">${typeLabel}</span><span class="cmp-a">${esc(label)}</span></div>`;
+        const conf = c.confidence || 'high';
+        const confCls = { high: 'conf-high', medium: 'conf-med', low: 'conf-low' }[conf] || 'conf-high';
+        const confWarn = conf === 'low' ? '<span class="conf-warn">Please verify</span>' : '';
+        const lowCls = conf === 'low' ? ' cmp-low-conf' : '';
+        return `<div class="cmp-item ${cls}${lowCls}"><span class="cmp-q">Q${c.question_number}</span><span class="cmp-type">${typeLabel}</span><span class="conf-dot ${confCls}"></span><span class="cmp-a">${esc(label)}</span>${confWarn}</div>`;
     }).join('');
+
+    const annotSection = document.getElementById('annotation-section');
+    if (imageUrl) {
+        annotSection.classList.remove('hidden');
+        document.getElementById('annotation-img').src = imageUrl;
+        const container = document.getElementById('annotation-container');
+        container.querySelectorAll('.annot-box').forEach(el => el.remove());
+
+        const numQ = data.comparison.length;
+        const cols = numQ <= 5 ? 1 : numQ <= 20 ? 2 : 3;
+        const rows = Math.ceil(numQ / cols);
+        const pad = 0.8;
+
+        data.comparison.forEach((c, i) => {
+            const col = Math.floor(i / rows);
+            const row = i % rows;
+            const box = document.createElement('div');
+            box.className = `annot-box ${c.is_correct ? 'annot-correct' : 'annot-wrong'}`;
+            box.style.cssText = `left:${(col / cols) * 100 + pad}%;top:${(row / rows) * 100 + pad}%;width:${(1 / cols) * 100 - pad * 2}%;height:${(1 / rows) * 100 - pad * 2}%`;
+            box.innerHTML = `<span class="annot-label">Q${c.question_number}</span>`;
+            container.appendChild(box);
+        });
+
+        document.getElementById('annotation-wrap').classList.add('hidden');
+        document.getElementById('annotation-toggle').textContent = 'Show Answer Sheet';
+    } else {
+        annotSection.classList.add('hidden');
+    }
 
     document.getElementById('res-pdf-btn').onclick = () => downloadPdf(data.result_id);
     document.getElementById('res-wa-btn').onclick = () =>
@@ -798,6 +833,12 @@ function esc(str) {
 function copyCode(code) {
     navigator.clipboard.writeText(code).then(() => toast('Code copied!'));
 }
+
+document.getElementById('annotation-toggle').addEventListener('click', function () {
+    const wrap = document.getElementById('annotation-wrap');
+    const isHidden = wrap.classList.toggle('hidden');
+    this.textContent = isHidden ? 'Show Answer Sheet' : 'Hide Answer Sheet';
+});
 
 // ── Init ──────────────────────────────────────────────────────
 
