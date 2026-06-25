@@ -1,6 +1,7 @@
 const API = '';
 let token = localStorage.getItem('gradiq_token');
 let teacherName = localStorage.getItem('gradiq_name');
+let instituteName = localStorage.getItem('gradiq_institute');
 let currentTestId = null;
 let currentResults = {};
 
@@ -54,8 +55,10 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         if (!data.ok) throw new Error(json.detail);
         token = json.access_token;
         teacherName = json.teacher_name;
+        instituteName = json.institute_name || '';
         localStorage.setItem('gradiq_token', token);
         localStorage.setItem('gradiq_name', teacherName);
+        localStorage.setItem('gradiq_institute', instituteName);
         enterDashboard();
     } catch (err) {
         errEl.textContent = err.message;
@@ -89,8 +92,10 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
 document.getElementById('logout-btn').addEventListener('click', () => {
     token = null;
     teacherName = null;
+    instituteName = null;
     localStorage.removeItem('gradiq_token');
     localStorage.removeItem('gradiq_name');
+    localStorage.removeItem('gradiq_institute');
     document.getElementById('auth-screen').classList.add('active');
     document.getElementById('auth-modal').classList.add('hidden');
     document.getElementById('dashboard-screen').classList.remove('active');
@@ -124,35 +129,107 @@ function showView(viewId) {
     if (viewId === 'test-list-view') loadTests();
 }
 
+function renderTeacherName() {
+    const el = document.getElementById('teacher-name');
+    const inst = instituteName ? ` <span class="teacher-name-inst">(${instituteName})</span>` : '';
+    el.innerHTML = `<span class="teacher-name-main">${esc(teacherName)}</span>${inst}`;
+}
+
 function enterDashboard() {
     document.getElementById('auth-screen').classList.remove('active');
     document.getElementById('auth-modal').classList.add('hidden');
     document.getElementById('dashboard-screen').classList.add('active');
-    document.getElementById('teacher-name').textContent = teacherName;
+    renderTeacherName();
     showView('test-list-view');
 }
 
 // ── Tests ─────────────────────────────────────────────────────
 
+function getGreeting() {
+    const h = new Date().getHours();
+    if (h < 12) return 'Good morning';
+    if (h < 17) return 'Good afternoon';
+    return 'Good evening';
+}
+
 async function loadTests() {
     try {
+        const greetEl = document.getElementById('greeting-text');
+        if (greetEl) greetEl.textContent = `${getGreeting()}, ${teacherName}.`;
+
         const tests = await api('/api/tests');
         const grid = document.getElementById('tests-grid');
+
+        let totalStudents = 0;
+        const resultCounts = {};
+        for (const t of tests) {
+            try {
+                const results = await api(`/api/tests/${t.id}/results`);
+                resultCounts[t.id] = results;
+                totalStudents += results.length;
+            } catch (_) {
+                resultCounts[t.id] = [];
+            }
+        }
+
+        const savedEl = document.getElementById('time-saved-card');
+        if (savedEl) {
+            const hours = ((totalStudents * 10) / 60).toFixed(1);
+            document.getElementById('time-saved-text').textContent =
+                `GradiQ has saved you approximately ${hours} hours this month`;
+            savedEl.classList.toggle('hidden', totalStudents === 0);
+        }
+
         if (tests.length === 0) {
-            grid.innerHTML = '<p class="empty-state">No tests yet. Create your first test to get started!</p>';
+            grid.innerHTML = `
+                <div class="empty-state-card">
+                    <div class="empty-state-shapes">
+                        <div class="empty-circle"></div>
+                        <div class="empty-lines"><span></span><span></span><span></span></div>
+                    </div>
+                    <h3 class="empty-title">Ready to grade your first class?</h3>
+                    <p class="empty-sub">Create a test and grade students in under 2 minutes.</p>
+                    <button class="btn-new-test" onclick="showView('create-test-view')"><span class="btn-new-test-icon">+</span> Create your first test</button>
+                </div>`;
             return;
         }
-        grid.innerHTML = tests.map(t => `
-            <div class="test-card" onclick="viewTest(${t.id})">
-                <h3>${esc(t.name)}</h3>
-                <span class="subject-badge">${esc(t.subject)}</span>
-                <div class="card-stats">
-                    <span>${t.num_questions} questions</span>
-                    <span>${t.total_marks} marks</span>
-                </div>
-                <div class="key-status pending">Click to view details</div>
-            </div>
-        `).join('');
+
+        grid.innerHTML = tests.map((t, idx) => {
+            const results = resultCounts[t.id] || [];
+            const count = results.length;
+            const avgPct = count > 0 ? (results.reduce((s, r) => s + r.percentage, 0) / count).toFixed(0) : 0;
+            const date = t.created_at ? new Date(t.created_at + 'Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+            const avatars = results.slice(0, 3).map(r => {
+                const initials = r.student_name.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+                return `<span class="avatar-circle" title="${esc(r.student_name)}">${initials}</span>`;
+            }).join('');
+            const extra = count > 3 ? `<span class="avatar-extra">+${count - 3}</span>` : '';
+
+            return `
+                <div class="test-card" onclick="viewTest(${t.id})" style="animation-delay:${idx * 0.08}s">
+                    <div class="tc-top">
+                        <span class="subject-badge">${esc(t.subject)}</span>
+                        <span class="tc-date">${date}</span>
+                    </div>
+                    <h3>${esc(t.name)}</h3>
+                    <div class="card-stats">
+                        <span>${t.num_questions} questions</span>
+                        <span>${t.total_marks} marks</span>
+                    </div>
+                    ${count > 0 ? `
+                    <div class="tc-progress">
+                        <div class="tc-progress-header">
+                            <span class="tc-progress-label">Class average</span>
+                            <span class="tc-progress-pct">${avgPct}%</span>
+                        </div>
+                        <div class="tc-bar-bg"><div class="tc-bar-fill" style="width:${avgPct}%"></div></div>
+                    </div>` : '<div class="key-status pending">No students graded yet</div>'}
+                    <div class="tc-bottom">
+                        <div class="tc-avatars">${avatars}${extra}</div>
+                        <span class="tc-grade-btn">Grade &rarr;</span>
+                    </div>
+                </div>`;
+        }).join('');
     } catch (err) {
         toast(err.message, true);
     }
@@ -546,7 +623,9 @@ function openGradeView(testId, test) {
     document.getElementById('grade-result').classList.add('hidden');
     document.getElementById('grade-form').classList.remove('hidden');
     document.getElementById('grade-submit-btn').classList.remove('loading');
-    document.getElementById('grade-submit-btn').textContent = 'Upload & Grade';
+    document.getElementById('grade-submit-btn').textContent = 'Analyze with AI';
+    const oldLoading = document.getElementById('grade-loading');
+    if (oldLoading) oldLoading.remove();
     document.getElementById('grade-back-btn').onclick = () => viewTest(testId);
     document.getElementById('back-to-test-btn').onclick = () => viewTest(testId);
     document.getElementById('grade-another-btn').onclick = () => openGradeView(testId, test);
@@ -591,11 +670,26 @@ uploadArea.addEventListener('drop', (ev) => {
 });
 
 // Submit grading
+let loadingMsgInterval = null;
 document.getElementById('grade-form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = document.getElementById('grade-submit-btn');
     btn.classList.add('loading');
-    btn.textContent = 'Analyzing with AI...';
+
+    const gradeForm = document.getElementById('grade-form');
+    gradeForm.classList.add('hidden');
+
+    const loadingEl = document.createElement('div');
+    loadingEl.className = 'grade-loading-overlay';
+    loadingEl.id = 'grade-loading';
+    loadingEl.innerHTML = '<div class="grade-loading-logo">Gradi<span class="accent">Q</span></div><p class="grade-loading-msg"></p>';
+    gradeForm.parentNode.insertBefore(loadingEl, gradeForm.nextSibling);
+
+    const messages = ['Reading answer sheet...', 'Detecting answers...', 'Calculating score...', 'Almost done...'];
+    let msgIdx = 0;
+    const msgEl = loadingEl.querySelector('.grade-loading-msg');
+    msgEl.textContent = messages[0];
+    loadingMsgInterval = setInterval(() => { msgIdx = (msgIdx + 1) % messages.length; msgEl.textContent = messages[msgIdx]; }, 2000);
 
     const imageFile = document.getElementById('answer-sheet-input').files[0];
     const imageUrl = imageFile ? URL.createObjectURL(imageFile) : null;
@@ -613,20 +707,71 @@ document.getElementById('grade-form').addEventListener('submit', async (e) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Grading failed');
 
-        document.getElementById('grade-form').classList.add('hidden');
+        clearInterval(loadingMsgInterval);
+        loadingEl.remove();
         showGradeResult(data, imageUrl);
     } catch (err) {
+        clearInterval(loadingMsgInterval);
+        loadingEl.remove();
+        gradeForm.classList.remove('hidden');
         toast(err.message, true);
         btn.classList.remove('loading');
-        btn.textContent = 'Upload & Grade';
+        btn.textContent = 'Analyze with AI';
     }
 });
 
+function animateCount(el, target, suffix, duration) {
+    const start = performance.now();
+    const step = (now) => {
+        const progress = Math.min((now - start) / duration, 1);
+        const ease = 1 - Math.pow(1 - progress, 3);
+        el.textContent = Math.round(target * ease) + suffix;
+        if (progress < 1) requestAnimationFrame(step);
+    };
+    requestAnimationFrame(step);
+}
+
+function fireConfetti() {
+    const canvas = document.createElement('canvas');
+    canvas.id = 'confetti-canvas';
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const pieces = Array.from({ length: 120 }, () => ({
+        x: canvas.width / 2, y: canvas.height / 2,
+        vx: (Math.random() - 0.5) * 16, vy: Math.random() * -14 - 4,
+        size: Math.random() * 6 + 3, color: ['#2dd4bf', '#30d158', '#ffd60a', '#ff453a', '#a78bfa', '#fff'][Math.floor(Math.random() * 6)],
+        rotation: Math.random() * 360, rotSpeed: (Math.random() - 0.5) * 12, alpha: 1,
+    }));
+    let frame = 0;
+    const animate = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        pieces.forEach(p => {
+            p.x += p.vx; p.y += p.vy; p.vy += 0.25; p.rotation += p.rotSpeed;
+            p.alpha = Math.max(0, p.alpha - 0.008);
+            ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.rotation * Math.PI / 180);
+            ctx.globalAlpha = p.alpha;
+            ctx.fillStyle = p.color; ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+            ctx.restore();
+        });
+        frame++;
+        if (frame < 120) requestAnimationFrame(animate);
+        else canvas.remove();
+    };
+    requestAnimationFrame(animate);
+}
+
 function showGradeResult(data, imageUrl) {
     document.getElementById('res-student').textContent = data.student_name;
-    document.getElementById('res-score').textContent = `${data.score} / ${data.total_marks}`;
-    document.getElementById('res-pct').textContent = `${data.percentage}%`;
-    document.getElementById('res-grade').textContent = data.grade;
+    animateCount(document.getElementById('res-score'), data.score, ` / ${data.total_marks}`, 800);
+    animateCount(document.getElementById('res-pct'), data.percentage, '%', 800);
+    const gradeEl = document.getElementById('res-grade');
+    gradeEl.textContent = data.grade;
+    gradeEl.classList.remove('grade-spring');
+    void gradeEl.offsetWidth;
+    gradeEl.classList.add('grade-spring');
+    if (data.grade === 'A+') setTimeout(fireConfetti, 400);
 
     const grid = document.getElementById('comparison-grid');
     grid.innerHTML = data.comparison.map(c => {

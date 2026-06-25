@@ -127,9 +127,16 @@
         <main class="container">
             <!-- Test List View -->
             <section id="test-list-view">
-                <div class="section-header">
-                    <h2>Your Tests</h2>
-                    <button id="new-test-btn" class="btn primary">+ New Test</button>
+                <div class="dash-greeting">
+                    <h2 class="greeting-text" id="greeting-text"></h2>
+                    <div class="time-saved-card" id="time-saved-card">
+                        <span class="time-saved-icon">&#9201;</span>
+                        <span class="time-saved-text" id="time-saved-text"></span>
+                    </div>
+                </div>
+                <div class="dash-toolbar">
+                    <span class="dash-section-label">YOUR TESTS</span>
+                    <button id="new-test-btn" class="btn-new-test"><span class="btn-new-test-icon">+</span> New Test</button>
                 </div>
                 <div id="tests-grid" class="tests-grid">
                     <p class="empty-state">No tests yet. Create your first test to get started!</p>
@@ -230,7 +237,7 @@
                         </div>
                     </div>
                     <button type="submit" id="grade-submit-btn" class="btn primary full">
-                        Upload &amp; Grade
+                        Analyze with AI
                     </button>
                 </form>
 
