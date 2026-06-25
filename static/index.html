@@ -226,6 +226,18 @@
             </div>
             <p class="wa-template-vars">Variables: {student_name} {score} {total} {percentage} {grade} {test_name} {institute_name}</p>
             <div class="wa-preview-card" id="wa-preview"></div>
+            <div class="settings-divider"></div>
+            <h3 class="settings-section-title">Refer GradiQ</h3>
+            <div class="referral-box">
+                <p class="referral-link-label">Your referral link:</p>
+                <div class="referral-link-row">
+                    <span class="referral-link" id="referral-link"></span>
+                    <button class="copy-code-btn" id="copy-referral" style="font-size:11px">copy</button>
+                </div>
+                <p class="referral-count" id="referral-count"></p>
+                <button type="button" class="btn outline small" id="share-referral-wa" style="margin-top:8px">Share on WhatsApp</button>
+            </div>
+            <div class="settings-divider"></div>
             <button type="button" class="btn primary full" id="save-settings-btn">Save Changes</button>
         </div>
     </div>
@@ -239,6 +251,30 @@
             <div class="result-actions" style="margin-top:20px">
                 <button class="btn primary" id="weekly-wa-btn">Share on WhatsApp</button>
                 <button class="btn outline" id="close-weekly-btn2">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ───── Invite Teacher Modal ───── -->
+    <div id="invite-modal" class="modal-overlay hidden">
+        <div class="modal-card" style="width:400px">
+            <button class="modal-close" id="close-invite-btn">&times;</button>
+            <h2 class="modal-logo">Invite Teacher</h2>
+            <div class="field">
+                <label for="invite-name">Teacher Name</label>
+                <input type="text" id="invite-name" placeholder="Full name">
+            </div>
+            <div class="field">
+                <label for="invite-email">Email</label>
+                <input type="email" id="invite-email" placeholder="teacher@school.edu">
+            </div>
+            <button type="button" class="btn primary full" id="send-invite-btn">Send Invite</button>
+            <div id="invite-result" class="invite-result hidden">
+                <p class="invite-result-msg">Invite sent! Share this temporary password:</p>
+                <div class="invite-pw-box">
+                    <span id="invite-pw"></span>
+                    <button class="copy-code-btn" id="copy-invite-pw" style="font-size:11px">copy</button>
+                </div>
             </div>
         </div>
     </div>
@@ -278,6 +314,13 @@
                         <h3>Students Needing Attention</h3>
                     </div>
                     <div id="at-risk-list"></div>
+                </div>
+                <div id="my-teachers-panel" class="my-teachers-panel hidden">
+                    <div class="at-risk-header">
+                        <h3>My Teachers</h3>
+                        <button class="btn primary small" id="invite-teacher-btn">Invite Teacher</button>
+                    </div>
+                    <div id="my-teachers-list"></div>
                 </div>
             </section>
 

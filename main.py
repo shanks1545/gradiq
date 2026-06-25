@@ -105,7 +105,8 @@ def init_db():
             conn.execute("ALTER TABLE tests ADD COLUMN question_types TEXT")
         except sqlite3.OperationalError:
             pass
-        for col in ("institute_name", "city", "board", "student_count"):
+        for col in ("institute_name", "city", "board", "student_count",
+                    "role", "institute_id", "invited_by", "referral_code", "referred_by"):
             try:
                 conn.execute(f"ALTER TABLE teachers ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
@@ -146,6 +147,12 @@ class TeacherCreate(BaseModel):
     name: str
     email: str
     password: str
+    referral_code: str | None = None
+
+
+class InviteTeacher(BaseModel):
+    name: str
+    email: str
 
 
 class TestCreate(BaseModel):
@@ -206,7 +213,7 @@ def get_current_teacher(token: str = Depends(oauth2_scheme)) -> dict:
         raise credentials_exception
 
     with db_session() as conn:
-        row = conn.execute("SELECT id, name, email, institute_name FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
+        row = conn.execute("SELECT id, name, email, institute_name, role, institute_id, referral_code FROM teachers WHERE id = ?", (teacher_id,)).fetchone()
     if row is None:
         raise credentials_exception
     return dict(row)
@@ -221,9 +228,17 @@ def register(teacher: TeacherCreate):
         if existing:
             raise HTTPException(status_code=400, detail="Email already registered")
         hashed = pwd_context.hash(teacher.password)
-        conn.execute(
-            "INSERT INTO teachers (name, email, password_hash) VALUES (?, ?, ?)",
+        cursor = conn.execute(
+            "INSERT INTO teachers (name, email, password_hash, role) VALUES (?, ?, ?, 'owner')",
             (teacher.name, teacher.email, hashed),
+        )
+        tid = cursor.lastrowid
+        inst_id = f"INST{tid:04d}"
+        ref_code = (teacher.name[:4].upper().replace(" ", "") + f"{tid:03d}")[:7]
+        referred_by = teacher.referral_code if teacher.referral_code else None
+        conn.execute(
+            "UPDATE teachers SET institute_id = ?, referral_code = ?, referred_by = ? WHERE id = ?",
+            (inst_id, ref_code, referred_by, tid),
         )
     return {"message": "Account created successfully"}
 
@@ -234,8 +249,24 @@ def login(form_data: OAuth2PasswordRequestForm = Depends()):
         row = conn.execute("SELECT * FROM teachers WHERE email = ?", (form_data.username,)).fetchone()
     if not row or not pwd_context.verify(form_data.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    token = create_access_token({"sub": str(row["id"])})
-    return {"access_token": token, "token_type": "bearer", "teacher_name": row["name"], "institute_name": row["institute_name"] or ""}
+    teacher_id = row["id"]
+    role = row["role"] or "owner"
+    ref_code = row["referral_code"] or ""
+    with db_session() as conn:
+        if not row["institute_id"]:
+            inst_id = f"INST{teacher_id:04d}"
+            conn.execute("UPDATE teachers SET institute_id = ?, role = 'owner' WHERE id = ? AND institute_id IS NULL",
+                         (inst_id, teacher_id))
+        if not row["referral_code"]:
+            ref_code = (row["name"][:4].upper().replace(" ", "") + f"{teacher_id:03d}")[:7]
+            conn.execute("UPDATE teachers SET referral_code = ? WHERE id = ? AND referral_code IS NULL",
+                         (ref_code, teacher_id))
+    token = create_access_token({"sub": str(teacher_id)})
+    return {
+        "access_token": token, "token_type": "bearer",
+        "teacher_name": row["name"], "institute_name": row["institute_name"] or "",
+        "role": role, "referral_code": ref_code,
+    }
 
 
 @app.patch("/api/profile")
@@ -256,6 +287,72 @@ def get_profile(teacher: dict = Depends(get_current_teacher)):
             (teacher["id"],),
         ).fetchone()
     return dict(row) if row else {}
+
+
+@app.post("/api/invite-teacher")
+def invite_teacher(body: InviteTeacher, teacher: dict = Depends(get_current_teacher)):
+    if (teacher.get("role") or "owner") != "owner":
+        raise HTTPException(status_code=403, detail="Only institute owners can invite teachers")
+    import secrets
+    temp_password = secrets.token_urlsafe(8)
+    with db_session() as conn:
+        existing = conn.execute("SELECT id FROM teachers WHERE email = ?", (body.email,)).fetchone()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
+        hashed = pwd_context.hash(temp_password)
+        cursor = conn.execute(
+            "INSERT INTO teachers (name, email, password_hash, role, institute_id, invited_by, institute_name) "
+            "VALUES (?, ?, ?, 'teacher', ?, ?, ?)",
+            (body.name, body.email, hashed, teacher.get("institute_id"), teacher["id"], teacher.get("institute_name")),
+        )
+        tid = cursor.lastrowid
+        ref_code = (body.name[:4].upper().replace(" ", "") + f"{tid:03d}")[:7]
+        conn.execute("UPDATE teachers SET referral_code = ? WHERE id = ?", (ref_code, tid))
+    return {"message": "Teacher invited", "email": body.email, "temp_password": temp_password}
+
+
+@app.get("/api/my-teachers")
+def my_teachers(teacher: dict = Depends(get_current_teacher)):
+    inst_id = teacher.get("institute_id")
+    if not inst_id:
+        return []
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT t.id, t.name, t.email, t.role, "
+            "(SELECT COUNT(*) FROM tests WHERE teacher_id = t.id) as test_count "
+            "FROM teachers t WHERE t.institute_id = ? AND t.id != ? ORDER BY t.name",
+            (inst_id, teacher["id"]),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.delete("/api/teachers/{teacher_id}")
+def remove_teacher(teacher_id: int, teacher: dict = Depends(get_current_teacher)):
+    if (teacher.get("role") or "owner") != "owner":
+        raise HTTPException(status_code=403, detail="Only owners can remove teachers")
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT id, institute_id FROM teachers WHERE id = ?", (teacher_id,)
+        ).fetchone()
+        if not row or row["institute_id"] != teacher.get("institute_id"):
+            raise HTTPException(status_code=404, detail="Teacher not found")
+        if teacher_id == teacher["id"]:
+            raise HTTPException(status_code=400, detail="Cannot remove yourself")
+        conn.execute("DELETE FROM teachers WHERE id = ?", (teacher_id,))
+    return {"message": "Teacher removed"}
+
+
+@app.get("/api/referral-count")
+def referral_count(teacher: dict = Depends(get_current_teacher)):
+    ref_code = teacher.get("referral_code")
+    if not ref_code:
+        return {"count": 0}
+    with db_session() as conn:
+        row = conn.execute(
+            "SELECT COUNT(DISTINCT institute_id) as cnt FROM teachers WHERE referred_by = ?",
+            (ref_code,),
+        ).fetchone()
+    return {"count": row["cnt"] if row else 0}
 
 
 @app.get("/api/student/{student_name}/history")

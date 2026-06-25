@@ -2,6 +2,8 @@ const API = '';
 let token = localStorage.getItem('gradiq_token');
 let teacherName = localStorage.getItem('gradiq_name');
 let instituteName = localStorage.getItem('gradiq_institute');
+let teacherRole = localStorage.getItem('gradiq_role') || 'owner';
+let referralCode = localStorage.getItem('gradiq_referral') || '';
 let currentTestId = null;
 let currentResults = {};
 
@@ -56,9 +58,13 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
         token = json.access_token;
         teacherName = json.teacher_name;
         instituteName = json.institute_name || '';
+        teacherRole = json.role || 'owner';
+        referralCode = json.referral_code || '';
         localStorage.setItem('gradiq_token', token);
         localStorage.setItem('gradiq_name', teacherName);
         localStorage.setItem('gradiq_institute', instituteName);
+        localStorage.setItem('gradiq_role', teacherRole);
+        localStorage.setItem('gradiq_referral', referralCode);
         enterDashboard();
     } catch (err) {
         errEl.textContent = err.message;
@@ -86,9 +92,13 @@ document.getElementById('register-form').addEventListener('submit', async (e) =>
         token = loginJson.access_token;
         teacherName = loginJson.teacher_name;
         instituteName = loginJson.institute_name || '';
+        teacherRole = loginJson.role || 'owner';
+        referralCode = loginJson.referral_code || '';
         localStorage.setItem('gradiq_token', token);
         localStorage.setItem('gradiq_name', teacherName);
         localStorage.setItem('gradiq_institute', instituteName);
+        localStorage.setItem('gradiq_role', teacherRole);
+        localStorage.setItem('gradiq_referral', referralCode);
         localStorage.removeItem('gradiq_onboarded');
         document.getElementById('auth-modal').classList.add('hidden');
         startOnboarding();
@@ -101,9 +111,13 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     token = null;
     teacherName = null;
     instituteName = null;
+    teacherRole = 'owner';
+    referralCode = '';
     localStorage.removeItem('gradiq_token');
     localStorage.removeItem('gradiq_name');
     localStorage.removeItem('gradiq_institute');
+    localStorage.removeItem('gradiq_role');
+    localStorage.removeItem('gradiq_referral');
     document.getElementById('auth-screen').classList.add('active');
     document.getElementById('auth-modal').classList.add('hidden');
     document.getElementById('dashboard-screen').classList.remove('active');
@@ -240,9 +254,42 @@ async function loadTests() {
         }).join('');
 
         loadAtRiskPanel();
+        loadMyTeachersPanel();
     } catch (err) {
         toast(err.message, true);
     }
+}
+
+async function loadMyTeachersPanel() {
+    const panel = document.getElementById('my-teachers-panel');
+    if (teacherRole !== 'owner') { panel.classList.add('hidden'); return; }
+    try {
+        const teachers = await api('/api/my-teachers');
+        const list = document.getElementById('my-teachers-list');
+        if (teachers.length === 0) {
+            list.innerHTML = '<p class="sp-no-notes">No teachers invited yet. Invite your first teacher to get started.</p>';
+        } else {
+            list.innerHTML = teachers.map(t => `
+                <div class="teacher-item">
+                    <div class="teacher-info">
+                        <span class="teacher-item-name">${esc(t.name)}</span>
+                        <span class="teacher-item-email">${esc(t.email)}</span>
+                    </div>
+                    <span class="teacher-item-meta">${t.test_count} tests</span>
+                    <button class="del-btn" onclick="removeTeacher(${t.id})" title="Remove">&times;</button>
+                </div>`).join('');
+        }
+        panel.classList.remove('hidden');
+    } catch (_) { panel.classList.add('hidden'); }
+}
+
+async function removeTeacher(id) {
+    if (!confirm('Remove this teacher from your institute?')) return;
+    try {
+        await api(`/api/teachers/${id}`, { method: 'DELETE' });
+        toast('Teacher removed.');
+        loadMyTeachersPanel();
+    } catch (err) { toast(err.message, true); }
 }
 
 async function loadAtRiskPanel() {
@@ -1184,6 +1231,57 @@ document.getElementById('weekly-wa-btn').addEventListener('click', () => {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
 });
 
+// ── Invite Teacher Modal ─────────────────────────────────────
+
+document.getElementById('invite-teacher-btn').addEventListener('click', () => {
+    document.getElementById('invite-name').value = '';
+    document.getElementById('invite-email').value = '';
+    document.getElementById('invite-result').classList.add('hidden');
+    document.getElementById('invite-modal').classList.remove('hidden');
+});
+document.getElementById('close-invite-btn').addEventListener('click', () => document.getElementById('invite-modal').classList.add('hidden'));
+document.getElementById('invite-modal').addEventListener('click', (e) => { if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden'); });
+
+document.getElementById('send-invite-btn').addEventListener('click', async () => {
+    const name = document.getElementById('invite-name').value.trim();
+    const email = document.getElementById('invite-email').value.trim();
+    if (!name || !email) { toast('Please fill in name and email.', true); return; }
+    try {
+        const res = await api('/api/invite-teacher', { method: 'POST', body: { name, email } });
+        document.getElementById('invite-pw').textContent = res.temp_password;
+        document.getElementById('invite-result').classList.remove('hidden');
+        toast('Invite sent!');
+        loadMyTeachersPanel();
+    } catch (err) { toast(err.message, true); }
+});
+
+document.getElementById('copy-invite-pw').addEventListener('click', () => {
+    navigator.clipboard.writeText(document.getElementById('invite-pw').textContent).then(() => toast('Password copied!'));
+});
+
+// ── Referral Section ─────────────────────────────────────────
+
+async function loadReferralSection() {
+    const link = `gradiq.co.in/join?ref=${referralCode}`;
+    document.getElementById('referral-link').textContent = link;
+    try {
+        const data = await api('/api/referral-count');
+        document.getElementById('referral-count').textContent =
+            data.count > 0 ? `${data.count} institute${data.count > 1 ? 's' : ''} joined via your referral` : 'Share your link to start referring!';
+    } catch (_) {
+        document.getElementById('referral-count').textContent = '';
+    }
+}
+
+document.getElementById('copy-referral').addEventListener('click', () => {
+    navigator.clipboard.writeText(`gradiq.co.in/join?ref=${referralCode}`).then(() => toast('Referral link copied!'));
+});
+
+document.getElementById('share-referral-wa').addEventListener('click', () => {
+    const text = `Hey! I've been using GradiQ to grade my students' answer sheets with AI — saves me hours every week. Try it free: gradiq.co.in/join?ref=${referralCode}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+});
+
 // ── Print Results ────────────────────────────────────────────
 
 function printResults(test, results) {
@@ -1334,6 +1432,7 @@ document.getElementById('settings-btn').addEventListener('click', async () => {
     } catch (_) {}
     document.getElementById('settings-wa-template').value = getWaTemplate();
     updateWaPreview();
+    loadReferralSection();
     document.getElementById('settings-modal').classList.remove('hidden');
 });
 

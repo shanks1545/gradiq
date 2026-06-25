@@ -826,6 +826,47 @@ h4 { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 }
 .copy-code-btn:hover { background: var(--teal-subtle); }
 
+/* ── My Teachers Panel ─────────────────────────────────────────── */
+.my-teachers-panel {
+    margin-top: 20px; background: var(--card-bg); border: 0.5px solid var(--card-border);
+    border-radius: var(--radius); padding: 20px;
+}
+.my-teachers-panel .at-risk-header { justify-content: space-between; }
+.teacher-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 0; border-bottom: 0.5px solid var(--card-border);
+}
+.teacher-item:last-child { border-bottom: none; }
+.teacher-info { flex: 1; min-width: 0; }
+.teacher-item-name { display: block; font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.teacher-item-email { display: block; font-size: 12px; color: var(--text-tertiary); }
+.teacher-item-meta { font-size: 12px; color: var(--text-secondary); white-space: nowrap; }
+
+/* ── Invite Modal ─────────────────────────────────────────────── */
+.invite-result { margin-top: 16px; animation: fadeUp 0.3s ease-out; }
+.invite-result-msg { font-size: 14px; color: var(--green); font-weight: 700; margin-bottom: 8px; }
+.invite-pw-box {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.06); border: 0.5px solid var(--card-border);
+    border-radius: var(--radius-sm); padding: 12px 16px;
+    font-family: 'SF Mono', 'Menlo', monospace; font-size: 15px;
+    font-weight: 700; color: var(--teal); letter-spacing: 0.04em;
+}
+
+/* ── Referral Section ─────────────────────────────────────────── */
+.referral-box { margin-bottom: 4px; }
+.referral-link-label { font-size: 12px; color: var(--text-tertiary); margin-bottom: 6px; }
+.referral-link-row {
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(255,255,255,0.06); border: 0.5px solid var(--card-border);
+    border-radius: var(--radius-sm); padding: 10px 14px; margin-bottom: 8px;
+}
+.referral-link {
+    font-family: 'SF Mono', 'Menlo', monospace; font-size: 13px;
+    color: var(--teal); font-weight: 700; letter-spacing: 0.02em; flex: 1;
+}
+.referral-count { font-size: 12px; color: var(--text-secondary); }
+
 /* ── Student Link ─────────────────────────────────────────────── */
 .student-link {
     color: var(--teal); cursor: pointer; font-weight: 700;
@@ -1027,15 +1068,15 @@ h4 { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 }
 
 /* ── Auth Modal Input Overrides ───────────────────────────────── */
-#auth-modal input, #settings-modal input, #settings-modal select {
+#auth-modal input, #settings-modal input, #settings-modal select, #invite-modal input {
     background: rgba(255,255,255,0.06) !important;
     color: #ffffff !important;
     border: 0.5px solid rgba(255,255,255,0.1) !important;
 }
-#auth-modal input::placeholder, #settings-modal input::placeholder {
+#auth-modal input::placeholder, #settings-modal input::placeholder, #invite-modal input::placeholder {
     color: rgba(255,255,255,0.3) !important;
 }
-#auth-modal input:focus, #settings-modal input:focus, #settings-modal select:focus {
+#auth-modal input:focus, #settings-modal input:focus, #settings-modal select:focus, #invite-modal input:focus {
     background: rgba(255,255,255,0.08) !important;
     border-color: rgba(45,212,191,0.6) !important;
     box-shadow: 0 0 0 3px rgba(45,212,191,0.12) !important;
