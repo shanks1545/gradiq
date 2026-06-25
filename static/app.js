@@ -238,9 +238,30 @@ async function loadTests() {
                     </div>
                 </div>`;
         }).join('');
+
+        loadAtRiskPanel();
     } catch (err) {
         toast(err.message, true);
     }
+}
+
+async function loadAtRiskPanel() {
+    try {
+        const atRisk = await api('/api/at-risk');
+        const panel = document.getElementById('at-risk-panel');
+        const list = document.getElementById('at-risk-list');
+        if (atRisk.length === 0) {
+            list.innerHTML = '<div class="at-risk-ok"><span class="at-risk-ok-icon">&#10003;</span> All students are on track</div>';
+        } else {
+            list.innerHTML = atRisk.map(s => `
+                <div class="at-risk-item">
+                    <a class="student-link" onclick="openStudentProfile('${s.student_name.replace(/'/g, "\\'")}')">${esc(s.student_name)}</a>
+                    ${s.child_code ? `<span class="child-code" style="font-size:11px;margin-left:8px">${esc(s.child_code)}</span>` : ''}
+                    <div class="at-risk-scores">${s.recent_tests.map(t => `<span class="at-risk-score">${esc(t.test_name)}: ${t.percentage}%</span>`).join('')}</div>
+                </div>`).join('');
+        }
+        panel.classList.remove('hidden');
+    } catch (_) {}
 }
 
 document.getElementById('new-test-btn').addEventListener('click', () => showView('create-test-view'));
@@ -469,7 +490,7 @@ function renderResultsTable(results) {
                 ${ranked.map((r, i) => `
                     <tr>
                         <td class="rank-cell">${i + 1}</td>
-                        <td>${esc(r.student_name)}</td>
+                        <td><a class="student-link" onclick="openStudentProfile('${r.student_name.replace(/'/g, "\\'")}')">${esc(r.student_name)}</a></td>
                         <td class="code-cell">${r.child_code ? `<span class="child-code">${esc(r.child_code)}</span><button class="copy-code-btn" onclick="copyCode('${r.child_code}')" title="Copy code">copy</button>` : '<span class="no-code">&mdash;</span>'}</td>
                         <td class="score-cell" id="score-${r.id}">
                             <span class="score-display">${r.score} / ${r.total_marks}</span>
@@ -996,6 +1017,115 @@ document.getElementById('batch-grade-all-btn').addEventListener('click', async (
     } else {
         failuresEl.classList.add('hidden');
     }
+});
+
+// ── Student Profile ──────────────────────────────────────────
+
+let currentStudentName = null;
+
+async function openStudentProfile(name) {
+    currentStudentName = name;
+    document.getElementById('sp-name').textContent = name;
+    document.getElementById('sp-institute').textContent = instituteName ? `(${instituteName})` : '';
+
+    try {
+        const history = await api(`/api/student/${encodeURIComponent(name)}/history`);
+        const notes = await api(`/api/student-notes/${encodeURIComponent(name)}`);
+
+        document.getElementById('sp-code').textContent = history.length > 0 && history[history.length - 1].child_code ? history[history.length - 1].child_code : '';
+
+        const trendEl = document.getElementById('sp-trend');
+        if (history.length >= 3) {
+            const last3 = history.slice(-3);
+            const avgLast2 = (last3[1].percentage + last3[2].percentage) / 2;
+            const first = last3[0].percentage;
+            if (avgLast2 > first + 5) trendEl.innerHTML = '<span class="trend-up">&#9650; Improving</span>';
+            else if (avgLast2 < first - 5) trendEl.innerHTML = '<span class="trend-down">&#9660; Declining</span>';
+            else trendEl.innerHTML = '<span class="trend-flat">&#8212; Consistent</span>';
+        } else {
+            trendEl.innerHTML = '';
+        }
+
+        renderPerformanceChart(history);
+
+        const tbody = history.slice().reverse().map(h => {
+            const date = h.graded_at ? new Date(h.graded_at + 'Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+            return `<tr><td>${esc(h.test_name)}</td><td>${date}</td><td>${h.score}/${h.total_marks}</td><td>${h.percentage}%</td><td><span class="grade-pill grade-${gradeClass(h.grade)}">${esc(h.grade)}</span></td></tr>`;
+        }).join('');
+        document.getElementById('sp-history-table').innerHTML = `<thead><tr><th>Test</th><th>Date</th><th>Score</th><th>%</th><th>Grade</th></tr></thead><tbody>${tbody}</tbody>`;
+
+        const notesList = document.getElementById('sp-notes-list');
+        if (notes.length === 0) {
+            notesList.innerHTML = '<p class="sp-no-notes">No notes yet.</p>';
+        } else {
+            notesList.innerHTML = notes.map(n => {
+                const d = n.created_at ? new Date(n.created_at + 'Z').toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '';
+                return `<div class="sp-note"><span class="sp-note-date">${d}</span><span class="sp-note-body">${esc(n.note_text)}</span></div>`;
+            }).join('');
+        }
+        document.getElementById('sp-note-text').value = '';
+
+        document.getElementById('sp-back-btn').onclick = () => {
+            if (currentTestId) viewTest(currentTestId);
+            else showView('test-list-view');
+        };
+
+        showView('student-profile-view');
+    } catch (err) { toast(err.message, true); }
+}
+
+function renderPerformanceChart(history) {
+    const chart = document.getElementById('sp-chart');
+    if (history.length === 0) { chart.innerHTML = '<p class="sp-no-notes">No data yet.</p>'; return; }
+    if (history.length === 1) {
+        chart.innerHTML = `<p class="sp-no-notes">Only 1 test recorded (${history[0].percentage}%). Need more data for a chart.</p>`;
+        return;
+    }
+
+    const w = 600, h = 200, pad = 40, padR = 20, padB = 50;
+    const pts = history.map((d, i) => ({
+        x: pad + (i / (history.length - 1)) * (w - pad - padR),
+        y: (h - padB) - (d.percentage / 100) * (h - padB - 10),
+        pct: d.percentage, name: d.test_name,
+    }));
+
+    let pathD = `M${pts[0].x},${pts[0].y}`;
+    for (let i = 1; i < pts.length; i++) {
+        const cx = (pts[i - 1].x + pts[i].x) / 2;
+        pathD += ` C${cx},${pts[i - 1].y} ${cx},${pts[i].y} ${pts[i].x},${pts[i].y}`;
+    }
+
+    const gridLines = [0, 25, 50, 75, 100].map(v => {
+        const y = (h - padB) - (v / 100) * (h - padB - 10);
+        return `<line x1="${pad}" y1="${y}" x2="${w - padR}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="0.5"/>
+                <text x="${pad - 8}" y="${y + 4}" fill="rgba(255,255,255,0.3)" font-size="10" text-anchor="end">${v}</text>`;
+    }).join('');
+
+    const labels = pts.map((p, i) => {
+        const label = history[i].test_name.length > 8 ? history[i].test_name.substring(0, 8) + '..' : history[i].test_name;
+        return `<text x="${p.x}" y="${h - padB + 20}" fill="rgba(255,255,255,0.4)" font-size="10" text-anchor="middle" transform="rotate(-20 ${p.x} ${h - padB + 20})">${esc(label)}</text>`;
+    }).join('');
+
+    const dots = pts.map(p =>
+        `<circle cx="${p.x}" cy="${p.y}" r="5" fill="var(--teal)" stroke="#000" stroke-width="2"/>
+         <title>${p.name}: ${p.pct}%</title>`
+    ).join('');
+
+    chart.innerHTML = `<svg viewBox="0 0 ${w} ${h}" class="sp-svg">${gridLines}${labels}
+        <path d="${pathD}" fill="none" stroke="var(--teal)" stroke-width="2.5" stroke-linecap="round"/>
+        <path d="${pathD} L${pts[pts.length-1].x},${h-padB} L${pts[0].x},${h-padB} Z" fill="url(#tealGrad)" opacity="0.15"/>
+        <defs><linearGradient id="tealGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--teal)"/><stop offset="100%" stop-color="transparent"/></linearGradient></defs>
+        ${dots}</svg>`;
+}
+
+document.getElementById('sp-save-note').addEventListener('click', async () => {
+    const text = document.getElementById('sp-note-text').value.trim();
+    if (!text) { toast('Please enter a note.', true); return; }
+    try {
+        await api('/api/student-notes', { method: 'POST', body: { student_name: currentStudentName, note_text: text } });
+        toast('Note saved!');
+        openStudentProfile(currentStudentName);
+    } catch (err) { toast(err.message, true); }
 });
 
 // ── Utilities ─────────────────────────────────────────────────

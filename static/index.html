@@ -251,6 +251,13 @@
                 <div id="tests-grid" class="tests-grid">
                     <p class="empty-state">No tests yet. Create your first test to get started!</p>
                 </div>
+                <div id="at-risk-panel" class="at-risk-panel hidden">
+                    <div class="at-risk-header">
+                        <span class="at-risk-icon">&#9888;</span>
+                        <h3>Students Needing Attention</h3>
+                    </div>
+                    <div id="at-risk-list"></div>
+                </div>
             </section>
 
             <!-- Create Test View -->
@@ -448,6 +455,37 @@
                     <div id="batch-failures" class="batch-failures hidden"></div>
                     <div class="result-actions" style="margin-top:1.25rem">
                         <button class="btn primary" id="batch-view-results-btn">View Results</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Student Profile View -->
+            <section id="student-profile-view" class="hidden">
+                <button class="btn text back-btn" id="sp-back-btn">&larr; Back to Results</button>
+                <div class="card sp-header-card">
+                    <h2 id="sp-name"></h2>
+                    <div class="sp-meta">
+                        <span id="sp-code" class="child-code"></span>
+                        <span id="sp-institute" class="sp-inst"></span>
+                    </div>
+                    <div id="sp-trend" class="sp-trend-badge"></div>
+                </div>
+                <div class="card sp-chart-card">
+                    <h3>Performance Over Time</h3>
+                    <div class="sp-chart-wrap" id="sp-chart"></div>
+                </div>
+                <div class="card sp-history-card">
+                    <h3>Test History</h3>
+                    <div class="table-scroll">
+                        <table class="results-table" id="sp-history-table"></table>
+                    </div>
+                </div>
+                <div class="card sp-notes-card">
+                    <h3>Teacher Notes</h3>
+                    <div id="sp-notes-list" class="sp-notes-list"></div>
+                    <div class="sp-note-input">
+                        <textarea id="sp-note-text" placeholder="Add a note about this student..." rows="2"></textarea>
+                        <button class="btn primary small" id="sp-save-note">Save Note</button>
                     </div>
                 </div>
             </section>

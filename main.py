@@ -110,6 +110,16 @@ def init_db():
                 conn.execute(f"ALTER TABLE teachers ADD COLUMN {col} TEXT")
             except sqlite3.OperationalError:
                 pass
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS student_notes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                teacher_id INTEGER NOT NULL,
+                student_name TEXT NOT NULL,
+                note_text TEXT NOT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (teacher_id) REFERENCES teachers(id)
+            )
+        """)
         row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='answer_keys'").fetchone()
         if row and "CHECK" in row["sql"]:
             conn.executescript("""
@@ -154,6 +164,11 @@ class ProfileUpdate(BaseModel):
     city: str | None = None
     board: str | None = None
     student_count: str | None = None
+
+
+class StudentNote(BaseModel):
+    student_name: str
+    note_text: str
 
 
 class AnswerKeyEntry(BaseModel):
@@ -241,6 +256,72 @@ def get_profile(teacher: dict = Depends(get_current_teacher)):
             (teacher["id"],),
         ).fetchone()
     return dict(row) if row else {}
+
+
+@app.get("/api/student/{student_name}/history")
+def student_history(student_name: str, teacher: dict = Depends(get_current_teacher)):
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT sr.id, sr.test_id, sr.score, sr.total_marks, sr.percentage, sr.grade, "
+            "sr.graded_at, sr.child_code, t.name AS test_name, t.subject "
+            "FROM student_results sr JOIN tests t ON sr.test_id = t.id "
+            "WHERE sr.student_name = ? AND t.teacher_id = ? ORDER BY sr.graded_at ASC",
+            (student_name, teacher["id"]),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.post("/api/student-notes")
+def add_student_note(body: StudentNote, teacher: dict = Depends(get_current_teacher)):
+    with db_session() as conn:
+        conn.execute(
+            "INSERT INTO student_notes (teacher_id, student_name, note_text) VALUES (?, ?, ?)",
+            (teacher["id"], body.student_name, body.note_text),
+        )
+    return {"message": "Note saved"}
+
+
+@app.get("/api/student-notes/{student_name}")
+def get_student_notes(student_name: str, teacher: dict = Depends(get_current_teacher)):
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT id, note_text, created_at FROM student_notes "
+            "WHERE teacher_id = ? AND student_name = ? ORDER BY created_at DESC",
+            (teacher["id"], student_name),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@app.get("/api/at-risk")
+def get_at_risk(teacher: dict = Depends(get_current_teacher)):
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT sr.student_name, sr.percentage, sr.grade, sr.child_code, "
+            "sr.graded_at, t.name AS test_name "
+            "FROM student_results sr JOIN tests t ON sr.test_id = t.id "
+            "WHERE t.teacher_id = ? ORDER BY sr.student_name, sr.graded_at DESC",
+            (teacher["id"],),
+        ).fetchall()
+
+    by_student = {}
+    for r in rows:
+        name = r["student_name"]
+        if name not in by_student:
+            by_student[name] = []
+        by_student[name].append(dict(r))
+
+    at_risk = []
+    for name, results in by_student.items():
+        if len(results) >= 2 and results[0]["percentage"] < 40 and results[1]["percentage"] < 40:
+            at_risk.append({
+                "student_name": name,
+                "child_code": results[0].get("child_code"),
+                "recent_tests": [
+                    {"test_name": results[0]["test_name"], "percentage": results[0]["percentage"], "grade": results[0]["grade"]},
+                    {"test_name": results[1]["test_name"], "percentage": results[1]["percentage"], "grade": results[1]["grade"]},
+                ],
+            })
+    return at_risk
 
 
 # ── Test routes ──────────────────────────────────────────────────────

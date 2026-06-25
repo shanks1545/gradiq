@@ -813,6 +813,72 @@ h4 { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.
 }
 .copy-code-btn:hover { background: var(--teal-subtle); }
 
+/* ── Student Link ─────────────────────────────────────────────── */
+.student-link {
+    color: var(--teal); cursor: pointer; font-weight: 700;
+    text-decoration: none; transition: opacity 0.2s;
+}
+.student-link:hover { opacity: 0.7; }
+
+/* ── At-Risk Panel ────────────────────────────────────────────── */
+.at-risk-panel {
+    margin-top: 24px; background: var(--card-bg); border: 0.5px solid var(--card-border);
+    border-radius: var(--radius); padding: 20px;
+}
+.at-risk-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.at-risk-icon { font-size: 20px; color: var(--red); }
+.at-risk-header h3 { font-size: 17px; letter-spacing: -0.02em; }
+.at-risk-item {
+    padding: 12px 0; border-bottom: 0.5px solid var(--card-border);
+    display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+}
+.at-risk-item:last-child { border-bottom: none; }
+.at-risk-scores { display: flex; gap: 12px; margin-left: auto; }
+.at-risk-score { font-size: 13px; color: var(--red); font-weight: 700; letter-spacing: -0.01em; }
+.at-risk-ok {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; color: var(--green); font-weight: 700; letter-spacing: -0.01em;
+}
+.at-risk-ok-icon { font-size: 18px; }
+
+/* ── Student Profile ──────────────────────────────────────────── */
+.sp-header-card { margin-bottom: 16px; }
+.sp-header-card h2 { font-size: 28px; letter-spacing: -0.03em; margin-bottom: 6px; }
+.sp-meta { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.sp-inst { font-size: 13px; color: var(--text-secondary); }
+.sp-trend-badge { margin-top: 4px; }
+.trend-up { color: var(--green); font-size: 13px; font-weight: 700; }
+.trend-down { color: var(--red); font-size: 13px; font-weight: 700; }
+.trend-flat { color: var(--teal); font-size: 13px; font-weight: 700; }
+.sp-chart-card { margin-bottom: 16px; }
+.sp-chart-wrap { margin-top: 12px; }
+.sp-svg {
+    width: 100%; height: auto;
+    font-family: var(--font);
+}
+.sp-history-card { margin-bottom: 16px; }
+.sp-notes-card { margin-bottom: 16px; }
+.sp-notes-list { margin-bottom: 16px; }
+.sp-note {
+    display: flex; gap: 10px; padding: 10px 0;
+    border-bottom: 0.5px solid var(--card-border);
+    font-size: 14px; color: var(--text-secondary); letter-spacing: -0.01em;
+}
+.sp-note:last-child { border-bottom: none; }
+.sp-note-date { color: var(--text-tertiary); font-size: 12px; white-space: nowrap; min-width: 50px; }
+.sp-note-body { color: var(--text-primary); }
+.sp-no-notes { color: var(--text-tertiary); font-size: 14px; padding: 8px 0; }
+.sp-note-input { display: flex; gap: 10px; align-items: flex-end; }
+.sp-note-input textarea {
+    flex: 1; padding: 10px 14px; background: rgba(255,255,255,0.06);
+    border: 0.5px solid rgba(255,255,255,0.1); border-radius: var(--radius-sm);
+    color: var(--text-primary); font-family: var(--font); font-size: 14px;
+    resize: vertical; outline: none; transition: border-color 0.2s;
+    letter-spacing: -0.01em;
+}
+.sp-note-input textarea:focus { border-color: rgba(45,212,191,0.6); }
+.sp-note-input textarea::placeholder { color: var(--text-tertiary); }
+
 /* ── Batch Grading ────────────────────────────────────────────── */
 .batch-file-list { margin: 16px 0; }
 .batch-file-count { color: var(--text-secondary); font-size: 14px; margin-bottom: 12px; letter-spacing: -0.01em; }
