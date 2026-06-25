@@ -292,6 +292,68 @@ def get_student_notes(student_name: str, teacher: dict = Depends(get_current_tea
     return [dict(r) for r in rows]
 
 
+@app.get("/api/weekly-report")
+def weekly_report(teacher: dict = Depends(get_current_teacher)):
+    with db_session() as conn:
+        rows = conn.execute(
+            "SELECT sr.student_name, sr.score, sr.total_marks, sr.percentage, sr.grade, "
+            "sr.graded_at, t.name AS test_name "
+            "FROM student_results sr JOIN tests t ON sr.test_id = t.id "
+            "WHERE t.teacher_id = ? AND sr.graded_at >= datetime('now', '-7 days') "
+            "ORDER BY sr.graded_at DESC",
+            (teacher["id"],),
+        ).fetchall()
+
+        at_risk_count = 0
+        all_rows = conn.execute(
+            "SELECT sr.student_name, sr.percentage, sr.graded_at "
+            "FROM student_results sr JOIN tests t ON sr.test_id = t.id "
+            "WHERE t.teacher_id = ? ORDER BY sr.student_name, sr.graded_at DESC",
+            (teacher["id"],),
+        ).fetchall()
+
+    by_student = {}
+    for r in all_rows:
+        name = r["student_name"]
+        if name not in by_student:
+            by_student[name] = []
+        by_student[name].append(r["percentage"])
+    for percs in by_student.values():
+        if len(percs) >= 2 and percs[0] < 40 and percs[1] < 40:
+            at_risk_count += 1
+
+    results = [dict(r) for r in rows]
+    total_students = len(results)
+    avg_pct = round(sum(r["percentage"] for r in results) / total_students, 1) if total_students > 0 else 0
+
+    top_performer = None
+    if results:
+        best = max(results, key=lambda r: r["percentage"])
+        top_performer = {"name": best["student_name"], "score": best["score"],
+                         "total": best["total_marks"], "percentage": best["percentage"]}
+
+    most_improved = None
+    weekly_students = {}
+    for r in results:
+        name = r["student_name"]
+        if name not in weekly_students:
+            weekly_students[name] = r["percentage"]
+    for name, current_pct in weekly_students.items():
+        prev = by_student.get(name, [])
+        if len(prev) >= 2:
+            improvement = current_pct - prev[1]
+            if most_improved is None or improvement > most_improved["improvement"]:
+                most_improved = {"name": name, "improvement": round(improvement, 1), "percentage": current_pct}
+
+    return {
+        "total_students": total_students,
+        "avg_percentage": avg_pct,
+        "top_performer": top_performer,
+        "most_improved": most_improved,
+        "at_risk_count": at_risk_count,
+    }
+
+
 @app.get("/api/at-risk")
 def get_at_risk(teacher: dict = Depends(get_current_teacher)):
     with db_session() as conn:
