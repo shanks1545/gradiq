@@ -37,6 +37,7 @@ document.querySelectorAll('.tab').forEach(tab => {
         tab.classList.add('active');
         document.getElementById(`${tab.dataset.tab}-form`).classList.add('active');
         document.getElementById('auth-error').textContent = '';
+        clearAuthInputs();
     });
 });
 
@@ -91,7 +92,28 @@ document.getElementById('logout-btn').addEventListener('click', () => {
     localStorage.removeItem('gradiq_token');
     localStorage.removeItem('gradiq_name');
     document.getElementById('auth-screen').classList.add('active');
+    document.getElementById('auth-modal').classList.add('hidden');
     document.getElementById('dashboard-screen').classList.remove('active');
+});
+
+// ── Auth Modal ───────────────────────────────────────────────
+
+function clearAuthInputs() {
+    document.querySelectorAll('#auth-modal input').forEach(input => { input.value = ''; input.blur(); });
+}
+document.getElementById('open-auth-btn').addEventListener('click', () => {
+    document.getElementById('auth-modal').classList.remove('hidden');
+    clearAuthInputs();
+});
+document.getElementById('get-started-btn').addEventListener('click', () => {
+    document.getElementById('auth-modal').classList.remove('hidden');
+    clearAuthInputs();
+});
+document.getElementById('close-auth-btn').addEventListener('click', () => {
+    document.getElementById('auth-modal').classList.add('hidden');
+});
+document.getElementById('auth-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden');
 });
 
 // ── Navigation ────────────────────────────────────────────────
@@ -104,6 +126,7 @@ function showView(viewId) {
 
 function enterDashboard() {
     document.getElementById('auth-screen').classList.remove('active');
+    document.getElementById('auth-modal').classList.add('hidden');
     document.getElementById('dashboard-screen').classList.add('active');
     document.getElementById('teacher-name').textContent = teacherName;
     showView('test-list-view');

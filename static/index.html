@@ -7,13 +7,75 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <!-- ───── Auth Screen ───── -->
+    <!-- ───── Landing Page ───── -->
     <div id="auth-screen" class="screen active">
-        <div class="auth-container">
-            <div class="logo">
-                <h1>Gradi<span class="accent">Q</span></h1>
-                <p class="tagline">Smart Test Management for Educators</p>
+        <nav class="landing-nav">
+            <div class="landing-nav-inner">
+                <a class="landing-logo">Gradi<span class="accent">Q</span></a>
+                <div class="landing-nav-links">
+                    <a href="#how-it-works">Features</a>
+                    <a href="#how-it-works">Pricing</a>
+                    <button class="nav-signin-btn" id="open-auth-btn">Sign Up / Login</button>
+                </div>
             </div>
+        </nav>
+
+        <section class="hero">
+            <div class="hero-inner">
+                <div class="hero-eyebrow anim-fade-up anim-d1">
+                    <span class="pulse-dot"></span>
+                    AI-Powered Grading
+                </div>
+                <h1 class="hero-title anim-fade-up anim-d2">Grade smarter.<br>Not harder.</h1>
+                <p class="hero-sub anim-fade-up anim-d3">Upload an answer sheet. Get results in seconds. Built for India's 96 lakh teachers.</p>
+                <div class="hero-ctas anim-fade-up anim-d4">
+                    <button class="btn-hero-primary" id="get-started-btn">Get started free</button>
+                    <button class="btn-hero-secondary" onclick="document.getElementById('how-it-works').scrollIntoView({behavior:'smooth'})">See how it works</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="stats-section">
+            <div class="stats-grid">
+                <div class="stat-card anim-fade-up anim-d5"><span class="stat-num">10x</span><span class="stat-lbl">Faster grading</span></div>
+                <div class="stat-card anim-fade-up anim-d6"><span class="stat-num">98%</span><span class="stat-lbl">Accuracy rate</span></div>
+                <div class="stat-card anim-fade-up anim-d7"><span class="stat-num">3</span><span class="stat-lbl">Question types</span></div>
+            </div>
+        </section>
+
+        <section class="how-section" id="how-it-works">
+            <span class="section-label">HOW IT WORKS</span>
+            <h2 class="section-title">Simple as taking a photo.</h2>
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-num">1</div>
+                    <h3 class="step-title-text">Upload answer key</h3>
+                    <p class="step-desc">Set the correct answers for each question &mdash; MCQ, fill in the blank, or true/false.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">2</div>
+                    <h3 class="step-title-text">Photograph sheets</h3>
+                    <p class="step-desc">Snap a photo of each student's answer sheet using your phone camera.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">3</div>
+                    <h3 class="step-title-text">AI grades instantly</h3>
+                    <p class="step-desc">Claude AI reads the handwriting and compares against your answer key.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-num">4</div>
+                    <h3 class="step-title-text">Results in seconds</h3>
+                    <p class="step-desc">Get detailed scores, grades, and confidence levels &mdash; share via WhatsApp or PDF.</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- ───── Auth Modal ───── -->
+    <div id="auth-modal" class="modal-overlay hidden" autocomplete="off">
+        <div class="modal-card">
+            <button class="modal-close" id="close-auth-btn">&times;</button>
+            <h2 class="modal-logo">Gradi<span class="accent">Q</span></h2>
 
             <div class="tab-bar">
                 <button class="tab active" data-tab="login">Log In</button>
@@ -23,11 +85,11 @@
             <form id="login-form" class="auth-form active">
                 <div class="field">
                     <label for="login-email">Email</label>
-                    <input type="email" id="login-email" required placeholder="you@school.edu">
+                    <input type="email" id="login-email" required placeholder="you@school.edu" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')">
                 </div>
                 <div class="field">
                     <label for="login-password">Password</label>
-                    <input type="password" id="login-password" required placeholder="Enter password">
+                    <input type="password" id="login-password" required placeholder="Enter password" autocomplete="new-password">
                 </div>
                 <button type="submit" class="btn primary full">Log In</button>
             </form>
@@ -35,15 +97,15 @@
             <form id="register-form" class="auth-form">
                 <div class="field">
                     <label for="reg-name">Full Name</label>
-                    <input type="text" id="reg-name" required placeholder="Jane Smith">
+                    <input type="text" id="reg-name" required placeholder="Jane Smith" autocomplete="off">
                 </div>
                 <div class="field">
                     <label for="reg-email">Email</label>
-                    <input type="email" id="reg-email" required placeholder="you@school.edu">
+                    <input type="email" id="reg-email" required placeholder="you@school.edu" autocomplete="off" readonly onfocus="this.removeAttribute('readonly')">
                 </div>
                 <div class="field">
                     <label for="reg-password">Password</label>
-                    <input type="password" id="reg-password" required minlength="6" placeholder="Min 6 characters">
+                    <input type="password" id="reg-password" required minlength="6" placeholder="Min 6 characters" autocomplete="new-password">
                 </div>
                 <button type="submit" class="btn primary full">Create Account</button>
             </form>
